@@ -36,6 +36,10 @@ class Conversation(Base):
     # Indica se é um grupo do WhatsApp
     is_group = Column(Boolean, default=False)
 
+    # Vínculos de grupo: responsável e gerente direto
+    responsible_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
+    manager_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
+
     # Análise LLM
     analysis_category = Column(String(30), nullable=True)    # reclamacao, problema_tecnico, nova_contratacao, suporte, elogio, informacao, outro
     analysis_sentiment = Column(String(20), nullable=True)   # positivo, neutro, negativo
@@ -43,6 +47,21 @@ class Conversation(Base):
     analysis_summary = Column(Text, nullable=True)
     analysis_analyzed_at = Column(DateTime, nullable=True)
 
-    attendant = relationship("Attendant", back_populates="conversations")
+    attendant = relationship(
+        "Attendant",
+        foreign_keys=[attendant_id],
+        back_populates="conversations",
+        overlaps="group_manager,responsible",
+    )
+    responsible = relationship(
+        "Attendant",
+        foreign_keys=[responsible_id],
+        overlaps="attendant,conversations,group_manager",
+    )
+    group_manager = relationship(
+        "Attendant",
+        foreign_keys=[manager_id],
+        overlaps="attendant,conversations,responsible",
+    )
     instance = relationship("Instance", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", order_by="Message.timestamp")

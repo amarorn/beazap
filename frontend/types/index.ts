@@ -68,6 +68,11 @@ export interface ConversationDetail {
   analysis_satisfaction?: number | null
   analysis_summary?: string | null
   analysis_analyzed_at?: string | null
+  // Vínculos de grupo
+  responsible_id?: number | null
+  responsible_name?: string | null
+  manager_id?: number | null
+  manager_name?: string | null
 }
 
 export interface CategoryCount {

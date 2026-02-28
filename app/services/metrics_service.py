@@ -204,6 +204,10 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         analysis_satisfaction=c.analysis_satisfaction,
         analysis_summary=c.analysis_summary,
         analysis_analyzed_at=c.analysis_analyzed_at,
+        responsible_id=c.responsible_id,
+        responsible_name=c.responsible.name if c.responsible else None,
+        manager_id=c.manager_id,
+        manager_name=c.group_manager.name if c.group_manager else None,
     )
 
 
@@ -267,6 +271,24 @@ def get_group_conversations(
     for c in convs:
         result.append(_to_conversation_detail(c))
     return result
+
+
+def update_group_config(
+    db: Session,
+    group_id: int,
+    responsible_id: Optional[int],
+    manager_id: Optional[int],
+) -> bool:
+    conv = db.query(Conversation).filter(
+        Conversation.id == group_id,
+        Conversation.is_group == True,
+    ).first()
+    if not conv:
+        return False
+    conv.responsible_id = responsible_id
+    conv.manager_id = manager_id
+    db.commit()
+    return True
 
 
 CATEGORY_LABELS = {
