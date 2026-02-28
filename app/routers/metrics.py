@@ -33,6 +33,24 @@ def daily_volume(
     return metrics_service.get_daily_volume(db, days, instance_id)
 
 
+@router.get("/daily-sla")
+def daily_sla(
+    days: int = Query(default=7, ge=1, le=90),
+    instance_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_daily_sla(db, days, instance_id)
+
+
+@router.get("/daily-status")
+def daily_status(
+    days: int = Query(default=7, ge=1, le=90),
+    instance_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_daily_status(db, days, instance_id)
+
+
 @router.get("/conversations")
 def conversations(
     limit: int = Query(default=20, ge=1, le=100),
@@ -83,6 +101,11 @@ def analyze_conversation(
 @router.get("/analysis-stats")
 def analysis_stats(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
     return metrics_service.get_analysis_stats(db, instance_id)
+
+
+@router.get("/groups/overview")
+def groups_overview(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_group_overview_metrics(db, instance_id)
 
 
 @router.post("/groups/sync-names")

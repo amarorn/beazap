@@ -3,9 +3,12 @@ import type {
   OverviewMetrics,
   AttendantMetrics,
   DailyVolume,
+  DailySla,
+  DailyStatus,
   ConversationDetail,
   ConversationMessage,
   AnalysisStats,
+  GroupOverviewMetrics,
   Instance,
   Attendant,
 } from '@/types'
@@ -27,6 +30,16 @@ export const metricsApi = {
 
   getDailyVolume: (days = 7, instanceId?: number) =>
     api.get<DailyVolume[]>('/api/metrics/daily-volume', {
+      params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
+    }).then(r => r.data),
+
+  getDailySla: (days = 7, instanceId?: number) =>
+    api.get<DailySla[]>('/api/metrics/daily-sla', {
+      params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
+    }).then(r => r.data),
+
+  getDailyStatus: (days = 7, instanceId?: number) =>
+    api.get<DailyStatus[]>('/api/metrics/daily-status', {
       params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
     }).then(r => r.data),
 
@@ -61,6 +74,11 @@ export const metricsApi = {
   syncGroupNames: (instanceId: number) =>
     api.post<{ updated: number; total_api?: number; error?: string }>('/api/metrics/groups/sync-names', null, {
       params: { instance_id: instanceId },
+    }).then(r => r.data),
+
+  getGroupOverview: (instanceId?: number) =>
+    api.get<GroupOverviewMetrics>('/api/metrics/groups/overview', {
+      params: instanceId ? { instance_id: instanceId } : {},
     }).then(r => r.data),
 
   getGroups: (params?: { instance_id?: number; limit?: number }) =>

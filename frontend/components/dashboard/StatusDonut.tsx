@@ -4,20 +4,22 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OverviewMetrics } from '@/types'
 
-const COLORS = ['#fbbf24', '#10b981', '#f87171']
+const COLORS = ['#fbbf24', '#60a5fa', '#10b981', '#f87171']
 
 interface StatusDonutProps {
   data: OverviewMetrics
 }
 
 export function StatusDonut({ data }: StatusDonutProps) {
-  const chartData = [
-    { name: 'Abertas', value: data.open_conversations },
-    { name: 'Resolvidas', value: data.resolved_conversations },
-    { name: 'Abandonadas', value: data.abandoned_conversations },
+  const allStatuses = [
+    { name: 'Esperando atendimento', value: data.waiting_conversations },
+    { name: 'Em atendimento', value: data.in_progress_conversations },
+    { name: 'Concluído', value: data.resolved_conversations },
+    { name: 'Abandonado', value: data.abandoned_conversations },
   ]
-
+  const chartData = allStatuses.filter(d => d.value > 0)
   const total = data.total_conversations
+  const displayData = chartData.length > 0 ? chartData : [{ name: 'Nenhum', value: 1 }]
 
   return (
     <Card className="border-zinc-100 shadow-sm">
@@ -31,7 +33,7 @@ export function StatusDonut({ data }: StatusDonutProps) {
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <Pie
-                data={chartData}
+                data={displayData}
                 cx="50%"
                 cy="50%"
                 innerRadius={55}
@@ -39,8 +41,8 @@ export function StatusDonut({ data }: StatusDonutProps) {
                 paddingAngle={3}
                 dataKey="value"
               >
-                {chartData.map((_, index) => (
-                  <Cell key={index} fill={COLORS[index]} strokeWidth={0} />
+                {displayData.map((_, index) => (
+                  <Cell key={index} fill={chartData.length > 0 ? COLORS[index % COLORS.length] : '#e4e4e7'} strokeWidth={0} />
                 ))}
               </Pie>
               <Tooltip
@@ -55,7 +57,7 @@ export function StatusDonut({ data }: StatusDonutProps) {
         </div>
 
         <div className="mt-3 space-y-2">
-          {chartData.map((item, i) => (
+          {allStatuses.map((item, i) => (
             <div key={item.name} className="flex justify-between text-sm">
               <span className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[i] }} />
