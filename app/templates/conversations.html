@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Atendimentos — BeaZap{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Atendimentos</h1>
+      <p class="text-sm text-gray-500 mt-1">Histórico completo de conversas</p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-end">
+    {% if selected_instance_id %}
+    <input type="hidden" name="instance_id" value="{{ selected_instance_id }}" />
+    {% endif %}
+
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Status</label>
+      <select name="status" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        <option value="">Todos</option>
+        <option value="open" {% if selected_status == 'open' %}selected{% endif %}>Abertas</option>
+        <option value="resolved" {% if selected_status == 'resolved' %}selected{% endif %}>Resolvidas</option>
+        <option value="abandoned" {% if selected_status == 'abandoned' %}selected{% endif %}>Abandonadas</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Atendente</label>
+      <select name="attendant_id" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        <option value="">Todos</option>
+        {% for att in attendants_list %}
+        <option value="{{ att.id }}" {% if selected_attendant_id == att.id %}selected{% endif %}>{{ att.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700 transition-colors">
+      Filtrar
+    </button>
+  </form>
+
+  <!-- Table -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <th class="text-left px-5 py-3 text-gray-500 font-medium">Contato</th>
+            <th class="text-left px-5 py-3 text-gray-500 font-medium">Atendente</th>
+            <th class="text-center px-5 py-3 text-gray-500 font-medium">Status</th>
+            <th class="text-center px-5 py-3 text-gray-500 font-medium">Abertura</th>
+            <th class="text-center px-5 py-3 text-gray-500 font-medium">1ª Resposta</th>
+            <th class="text-center px-5 py-3 text-gray-500 font-medium">Msgs</th>
+            <th class="text-center px-5 py-3 text-gray-500 font-medium">Ação</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for conv in conversations %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3">
+              <p class="font-medium text-gray-900">{{ conv.contact_name or "—" }}</p>
+              <p class="text-xs text-gray-400">{{ conv.contact_phone }}</p>
+            </td>
+            <td class="px-5 py-3 text-gray-700">{{ conv.attendant_name or "—" }}</td>
+            <td class="px-5 py-3 text-center">
+              {% if conv.status == 'open' %}
+              <span class="bg-yellow-100 text-yellow-700 text-xs px-2.5 py-1 rounded-full font-medium">Aberta</span>
+              {% elif conv.status == 'resolved' %}
+              <span class="bg-brand-100 text-brand-700 text-xs px-2.5 py-1 rounded-full font-medium">Resolvida</span>
+              {% else %}
+              <span class="bg-red-100 text-red-700 text-xs px-2.5 py-1 rounded-full font-medium">Abandonada</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-center text-gray-600">{{ conv.opened_at.strftime("%d/%m/%Y %H:%M") }}</td>
+            <td class="px-5 py-3 text-center text-gray-700 font-medium">{{ format_time(conv.first_response_time_seconds) }}</td>
+            <td class="px-5 py-3 text-center">
+              <span class="text-xs text-gray-500">{{ conv.inbound_count }} ↓</span>
+              <span class="text-xs text-brand-600 ml-1">{{ conv.outbound_count }} ↑</span>
+            </td>
+            <td class="px-5 py-3 text-center">
+              {% if conv.status == 'open' %}
+              <button
+                onclick="resolveConversation({{ conv.id }}, this)"
+                class="text-xs text-brand-600 hover:text-brand-700 font-medium border border-brand-200 px-2.5 py-1 rounded-lg hover:bg-brand-50 transition-colors"
+              >
+                Resolver
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not conversations %}
+    <div class="text-center py-12 text-gray-400 text-sm">Nenhum atendimento encontrado</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function resolveConversation(id, btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    const res = await fetch(`/api/metrics/conversations/${id}/resolve`, { method: 'POST' });
+    if (res.ok) {
+      location.reload();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Resolver';
+      alert('Erro ao resolver conversa');
+    }
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Configurações — BeaZap{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Configurações</h1>
+    <p class="text-sm text-gray-500 mt-1">Gerencie instâncias e atendentes</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Instances -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div class="px-5 py-4 border-b border-gray-100">
+        <h2 class="font-semibold text-gray-800">Instâncias WhatsApp</h2>
+      </div>
+
+      <div class="p-5 space-y-3">
+        {% for inst in instances %}
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div>
+            <p class="text-sm font-medium text-gray-900">{{ inst.name }}</p>
+            <p class="text-xs text-gray-400">{{ inst.instance_name }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-brand-500 rounded-full"></span>
+            <button onclick="deleteInstance({{ inst.id }})" class="text-xs text-red-500 hover:text-red-600">Remover</button>
+          </div>
+        </div>
+        {% endfor %}
+
+        <form id="instanceForm" class="space-y-3 mt-4 pt-4 border-t border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-700">Nova Instância</h3>
+          <input id="inst_name" type="text" placeholder="Nome (ex: Suporte)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required />
+          <input id="inst_instance_name" type="text" placeholder="Instance name (Evolution API)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required />
+          <input id="inst_api_url" type="url" placeholder="URL da Evolution API (ex: http://localhost:8080)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required />
+          <input id="inst_api_key" type="text" placeholder="API Key" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required />
+          <button type="button" onclick="createInstance()" class="w-full text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors font-medium">
+            Adicionar Instância
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Attendants -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div class="px-5 py-4 border-b border-gray-100">
+        <h2 class="font-semibold text-gray-800">Atendentes / Gerentes</h2>
+      </div>
+
+      <div class="p-5 space-y-3">
+        {% for att in attendants_list %}
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-semibold text-sm">
+              {{ att.name[0].upper() }}
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-900">{{ att.name }}</p>
+              <p class="text-xs text-gray-400">{{ att.phone }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            {% if att.role.value == 'manager' %}
+            <span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">Gerente</span>
+            {% else %}
+            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">Agente</span>
+            {% endif %}
+            <button onclick="deleteAttendant({{ att.id }})" class="text-xs text-red-500 hover:text-red-600">✕</button>
+          </div>
+        </div>
+        {% endfor %}
+
+        <form class="space-y-3 mt-4 pt-4 border-t border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-700">Novo Atendente</h3>
+          <input id="att_name" type="text" placeholder="Nome" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <input id="att_phone" type="text" placeholder="Telefone (com DDI, ex: 5511999999999)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <div class="grid grid-cols-2 gap-2">
+            <select id="att_role" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="agent">Agente</option>
+              <option value="manager">Gerente</option>
+            </select>
+            <select id="att_instance" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500">
+              {% for inst in instances %}
+              <option value="{{ inst.id }}">{{ inst.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="button" onclick="createAttendant()" class="w-full text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors font-medium">
+            Adicionar Atendente
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Webhook Info -->
+  <div class="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-blue-800 mb-2">Como configurar o Webhook na Evolution API</h3>
+    <p class="text-sm text-blue-700 mb-3">Configure o webhook abaixo na sua instância da Evolution API:</p>
+    <code class="block bg-white border border-blue-200 rounded-lg px-4 py-3 text-sm text-gray-800 font-mono">
+      POST http://SEU_IP:8000/webhook/{instance_name}
+    </code>
+    <p class="text-xs text-blue-600 mt-2">Eventos necessários: <strong>messages.upsert</strong>, <strong>messages.update</strong></p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function createInstance() {
+    const payload = {
+      name: document.getElementById('inst_name').value,
+      instance_name: document.getElementById('inst_instance_name').value,
+      api_url: document.getElementById('inst_api_url').value,
+      api_key: document.getElementById('inst_api_key').value,
+    };
+    const res = await fetch('/api/instances', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (res.ok) location.reload();
+    else { const err = await res.json(); alert(err.detail || 'Erro ao criar instância'); }
+  }
+
+  async function createAttendant() {
+    const payload = {
+      name: document.getElementById('att_name').value,
+      phone: document.getElementById('att_phone').value,
+      role: document.getElementById('att_role').value,
+      instance_id: parseInt(document.getElementById('att_instance').value),
+    };
+    const res = await fetch('/api/attendants', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (res.ok) location.reload();
+    else { const err = await res.json(); alert(err.detail || 'Erro ao criar atendente'); }
+  }
+
+  async function deleteInstance(id) {
+    if (!confirm('Desativar esta instância?')) return;
+    await fetch(`/api/instances/${id}`, { method: 'DELETE' });
+    location.reload();
+  }
+
+  async function deleteAttendant(id) {
+    if (!confirm('Remover este atendente?')) return;
+    await fetch(`/api/attendants/${id}`, { method: 'DELETE' });
+    location.reload();
+  }
+</script>
+{% endblock %}

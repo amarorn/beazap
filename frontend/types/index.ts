@@ -1,0 +1,94 @@
+export interface Instance {
+  id: number
+  name: string
+  instance_name: string
+  api_url: string
+  phone_number: string | null
+  active: boolean
+  created_at: string
+}
+
+export interface Attendant {
+  id: number
+  name: string
+  phone: string
+  email: string | null
+  role: 'manager' | 'agent'
+  instance_id: number
+  active: boolean
+  created_at: string
+}
+
+export interface OverviewMetrics {
+  total_conversations: number
+  open_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  avg_first_response_seconds: number | null
+  resolution_rate: number
+  total_messages_today: number
+  total_conversations_today: number
+}
+
+export interface AttendantMetrics {
+  attendant_id: number
+  attendant_name: string
+  role: string
+  total_conversations: number
+  open_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  avg_first_response_seconds: number | null
+  total_messages_sent: number
+  total_messages_received: number
+  resolution_rate: number
+}
+
+export interface DailyVolume {
+  date: string
+  inbound: number
+  outbound: number
+  conversations: number
+}
+
+export interface ConversationDetail {
+  id: number
+  contact_phone: string
+  contact_name: string | null
+  attendant_name: string | null
+  status: 'open' | 'resolved' | 'abandoned'
+  opened_at: string
+  resolved_at: string | null
+  first_response_time_seconds: number | null
+  inbound_count: number
+  outbound_count: number
+  // Análise LLM
+  analysis_category?: string | null
+  analysis_sentiment?: string | null
+  analysis_satisfaction?: number | null
+  analysis_summary?: string | null
+  analysis_analyzed_at?: string | null
+}
+
+export interface CategoryCount {
+  key: string
+  label: string
+  count: number
+}
+
+export interface AnalysisStats {
+  total_analyzed: number
+  avg_satisfaction: number | null
+  categories: CategoryCount[]
+  sentiments: Record<string, number>
+}
+
+export interface ConversationMessage {
+  id: number
+  direction: 'inbound' | 'outbound'
+  msg_type: string
+  content: string | null
+  timestamp: string
+  sender_phone?: string | null
+  sender_name?: string | null
+}

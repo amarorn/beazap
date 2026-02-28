@@ -1,0 +1,93 @@
+from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
+from sqlalchemy.orm import Session
+from typing import Optional
+from app.core.database import get_db
+from app.services import metrics_service
+from app.services import analysis_service
+
+router = APIRouter(prefix="/api/metrics", tags=["metrics"])
+
+
+@router.get("/overview")
+def overview(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_overview_metrics(db, instance_id)
+
+
+@router.get("/attendants")
+def attendants(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_attendant_metrics(db, instance_id)
+
+
+@router.get("/daily-volume")
+def daily_volume(
+    days: int = Query(default=7, ge=1, le=90),
+    instance_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_daily_volume(db, days, instance_id)
+
+
+@router.get("/conversations")
+def conversations(
+    limit: int = Query(default=20, ge=1, le=100),
+    instance_id: Optional[int] = None,
+    status: Optional[str] = None,
+    attendant_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_recent_conversations(db, limit, instance_id, status, attendant_id)
+
+
+@router.get("/conversations/{conversation_id}")
+def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    return metrics_service.get_conversation_detail(db, conversation_id)
+
+
+@router.get("/conversations/{conversation_id}/messages")
+def get_messages(conversation_id: int, db: Session = Depends(get_db)):
+    return metrics_service.get_conversation_messages(db, conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/resolve")
+def resolve_conversation(
+    conversation_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    success = metrics_service.resolve_conversation(db, conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    background_tasks.add_task(analysis_service.analyze_conversation, conversation_id)
+    return {"status": "resolved"}
+
+
+@router.post("/conversations/{conversation_id}/analyze")
+def analyze_conversation(
+    conversation_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    conv = metrics_service.get_conversation_detail(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    background_tasks.add_task(analysis_service.analyze_conversation, conversation_id)
+    return {"status": "analyzing"}
+
+
+@router.get("/analysis-stats")
+def analysis_stats(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_analysis_stats(db, instance_id)
+
+
+@router.get("/groups")
+def list_groups(
+    instance_id: Optional[int] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_group_conversations(db, instance_id, limit)
+
+
+@router.get("/groups/{conversation_id}/messages")
+def get_group_messages(conversation_id: int, db: Session = Depends(get_db)):
+    return metrics_service.get_conversation_messages(db, conversation_id)
