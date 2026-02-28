@@ -19,15 +19,38 @@ export interface Attendant {
   created_at: string
 }
 
+export interface GroupOverviewMetrics {
+  total_groups: number
+  groups_with_responsible: number
+  groups_without_responsible: number
+  groups_active_today: number
+  messages_in_groups_today: number
+}
+
 export interface OverviewMetrics {
   total_conversations: number
   open_conversations: number
   resolved_conversations: number
   abandoned_conversations: number
+  waiting_conversations: number
+  in_progress_conversations: number
   avg_first_response_seconds: number | null
   resolution_rate: number
   total_messages_today: number
   total_conversations_today: number
+}
+
+export interface DailySla {
+  date: string
+  avg_response_seconds: number | null
+  count: number
+}
+
+export interface DailyStatus {
+  date: string
+  opened: number
+  in_progress: number
+  waiting: number
 }
 
 export interface AttendantMetrics {
@@ -55,6 +78,7 @@ export interface ConversationDetail {
   id: number
   contact_phone: string
   contact_name: string | null
+  contact_avatar_url?: string | null
   attendant_name: string | null
   status: 'open' | 'resolved' | 'abandoned'
   opened_at: string

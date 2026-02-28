@@ -12,7 +12,16 @@ import { Button } from '@/components/ui/button'
 import { Users, MessageSquare, UserCheck, ShieldCheck, RefreshCw } from 'lucide-react'
 import type { ConversationDetail } from '@/types'
 
-function GroupAvatar({ name }: { name: string | null }) {
+function GroupAvatar({ name, avatarUrl }: { name: string | null; avatarUrl?: string | null }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name || 'Grupo'}
+        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+      />
+    )
+  }
   if (name) {
     const initials = name
       .split(' ')
@@ -76,7 +85,7 @@ function GroupConfigRow({
     <tr className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/60 transition-colors">
       <td className="px-5 py-3">
         <div className="flex items-center gap-3">
-          <GroupAvatar name={group.contact_name} />
+          <GroupAvatar name={group.contact_name} avatarUrl={group.contact_avatar_url} />
           <span className="font-medium text-zinc-900 dark:text-zinc-100">
             {group.contact_name || <span className="text-zinc-400 dark:text-zinc-500 italic">Sem nome</span>}
           </span>

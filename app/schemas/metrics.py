@@ -24,11 +24,34 @@ class DailyVolume(BaseModel):
     conversations: int
 
 
+class DailySla(BaseModel):
+    date: str
+    avg_response_seconds: Optional[float]
+    count: int
+
+
+class DailyStatus(BaseModel):
+    date: str
+    opened: int
+    in_progress: int
+    waiting: int
+
+
+class GroupOverviewMetrics(BaseModel):
+    total_groups: int
+    groups_with_responsible: int
+    groups_without_responsible: int
+    groups_active_today: int
+    messages_in_groups_today: int
+
+
 class OverviewMetrics(BaseModel):
     total_conversations: int
     open_conversations: int
     resolved_conversations: int
     abandoned_conversations: int
+    waiting_conversations: int
+    in_progress_conversations: int
     avg_first_response_seconds: Optional[float]
     resolution_rate: float
     total_messages_today: int
@@ -39,6 +62,7 @@ class ConversationDetail(BaseModel):
     id: int
     contact_phone: str
     contact_name: Optional[str]
+    contact_avatar_url: Optional[str] = None
     attendant_name: Optional[str]
     status: str
     opened_at: datetime

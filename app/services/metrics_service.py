@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, case
+from sqlalchemy import func, and_, or_, case
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -7,7 +7,7 @@ from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection
 from app.models.attendant import Attendant
 from app.models.instance import Instance
-from app.schemas.metrics import AttendantMetrics, OverviewMetrics, DailyVolume, ConversationDetail, AnalysisStats, CategoryCount
+from app.schemas.metrics import AttendantMetrics, OverviewMetrics, DailyVolume, DailySla, DailyStatus, ConversationDetail, AnalysisStats, CategoryCount, GroupOverviewMetrics
 
 
 def get_overview_metrics(db: Session, instance_id: Optional[int] = None) -> OverviewMetrics:
@@ -21,6 +21,12 @@ def get_overview_metrics(db: Session, instance_id: Optional[int] = None) -> Over
     open_c = query.filter(Conversation.status == ConversationStatus.open).count()
     resolved_c = query.filter(Conversation.status == ConversationStatus.resolved).count()
     abandoned_c = query.filter(Conversation.status == ConversationStatus.abandoned).count()
+
+    open_base = db.query(Conversation).filter(Conversation.status == ConversationStatus.open)
+    if instance_id:
+        open_base = open_base.filter(Conversation.instance_id == instance_id)
+    waiting_c = open_base.filter(Conversation.first_response_at.is_(None)).count()
+    in_progress_c = open_base.filter(Conversation.first_response_at.isnot(None)).count()
 
     avg_response = (
         db.query(func.avg(Conversation.first_response_time_seconds))
@@ -46,6 +52,8 @@ def get_overview_metrics(db: Session, instance_id: Optional[int] = None) -> Over
         open_conversations=open_c,
         resolved_conversations=resolved_c,
         abandoned_conversations=abandoned_c,
+        waiting_conversations=waiting_c,
+        in_progress_conversations=in_progress_c,
         avg_first_response_seconds=avg_response_val,
         resolution_rate=round(resolution_rate, 1),
         total_messages_today=today_messages,
@@ -164,6 +172,90 @@ def get_daily_volume(
     return result
 
 
+def get_daily_sla(
+    db: Session,
+    days: int = 7,
+    instance_id: Optional[int] = None,
+) -> List[DailySla]:
+    result = []
+    for i in range(days - 1, -1, -1):
+        day_start = (datetime.utcnow() - timedelta(days=i)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        day_end = day_start + timedelta(days=1)
+
+        q = (
+            db.query(
+                func.avg(Conversation.first_response_time_seconds).label("avg_sec"),
+                func.count(Conversation.id).label("cnt"),
+            )
+            .filter(
+                Conversation.first_response_time_seconds.isnot(None),
+                Conversation.first_response_at >= day_start,
+                Conversation.first_response_at < day_end,
+            )
+        )
+        if instance_id:
+            q = q.filter(Conversation.instance_id == instance_id)
+        row = q.first()
+
+        result.append(
+            DailySla(
+                date=day_start.strftime("%d/%m"),
+                avg_response_seconds=round(row.avg_sec, 1) if row and row.avg_sec else None,
+                count=row.cnt if row else 0,
+            )
+        )
+    return result
+
+
+def get_daily_status(
+    db: Session,
+    days: int = 7,
+    instance_id: Optional[int] = None,
+) -> List[DailyStatus]:
+    result = []
+    for i in range(days - 1, -1, -1):
+        day_start = (datetime.utcnow() - timedelta(days=i)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        day_end = day_start + timedelta(days=1)
+
+        base = db.query(Conversation).filter(Conversation.is_group == False)
+        if instance_id:
+            base = base.filter(Conversation.instance_id == instance_id)
+
+        opened = base.filter(
+            Conversation.opened_at >= day_start,
+            Conversation.opened_at < day_end,
+        ).count()
+
+        in_progress = base.filter(
+            Conversation.first_response_at >= day_start,
+            Conversation.first_response_at < day_end,
+        ).count()
+
+        waiting = base.filter(
+            Conversation.opened_at >= day_start,
+            Conversation.opened_at < day_end,
+        ).filter(
+            or_(
+                Conversation.first_response_at.is_(None),
+                Conversation.first_response_at >= day_end,
+            ),
+        ).count()
+
+        result.append(
+            DailyStatus(
+                date=day_start.strftime("%d/%m"),
+                opened=opened,
+                in_progress=in_progress,
+                waiting=waiting,
+            )
+        )
+    return result
+
+
 def get_recent_conversations(
     db: Session,
     limit: int = 20,
@@ -192,6 +284,7 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         id=c.id,
         contact_phone=c.contact_phone,
         contact_name=c.contact_name,
+        contact_avatar_url=c.contact_avatar_url,
         attendant_name=c.attendant.name if c.attendant else None,
         status=c.status.value,
         opened_at=c.opened_at,
@@ -254,6 +347,48 @@ def resolve_conversation(db: Session, conversation_id: int) -> bool:
     conv.resolved_at = datetime.utcnow()
     db.commit()
     return True
+
+
+def get_group_overview_metrics(db: Session, instance_id: Optional[int] = None) -> GroupOverviewMetrics:
+    query = db.query(Conversation).filter(Conversation.is_group == True)
+    if instance_id:
+        query = query.filter(Conversation.instance_id == instance_id)
+
+    total = query.count()
+    with_resp = query.filter(Conversation.responsible_id.isnot(None)).count()
+    without_resp = total - with_resp
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    active_today = (
+        db.query(func.count(Conversation.id))
+        .filter(
+            Conversation.is_group == True,
+            Conversation.last_message_at >= today_start,
+        )
+    )
+    if instance_id:
+        active_today = active_today.filter(Conversation.instance_id == instance_id)
+    active_today_val = active_today.scalar() or 0
+
+    msg_query = (
+        db.query(func.count(Message.id))
+        .join(Conversation)
+        .filter(
+            Conversation.is_group == True,
+            Message.timestamp >= today_start,
+        )
+    )
+    if instance_id:
+        msg_query = msg_query.filter(Conversation.instance_id == instance_id)
+    messages_today = msg_query.scalar() or 0
+
+    return GroupOverviewMetrics(
+        total_groups=total,
+        groups_with_responsible=with_resp,
+        groups_without_responsible=without_resp,
+        groups_active_today=active_today_val,
+        messages_in_groups_today=messages_today,
+    )
 
 
 def get_group_conversations(
@@ -356,12 +491,17 @@ def get_analysis_stats(db: Session, instance_id: Optional[int] = None) -> Analys
     )
 
 
+def _normalize_group_id(group_id: str) -> str:
+    return group_id.split("@")[0].split(":")[0]
+
+
 def sync_group_names(db: Session, instance_id: int) -> dict:
-    """Busca todos os grupos da Evolution API e atualiza os nomes no banco."""
+    """Busca todos os grupos da Evolution API e atualiza nomes/imagens no banco."""
     import httpx
     import logging
-    logger = logging.getLogger(__name__)
+    from datetime import datetime
 
+    logger = logging.getLogger(__name__)
     instance = db.query(Instance).filter(Instance.id == instance_id).first()
     if not instance:
         return {"updated": 0, "error": "Instância não encontrada"}
@@ -370,30 +510,32 @@ def sync_group_names(db: Session, instance_id: int) -> dict:
     logger.info(f"Sync grupos: GET {url}")
 
     try:
-        resp = httpx.get(url, headers={"apikey": instance.api_key}, timeout=15)
+        resp = httpx.get(url, headers={"apikey": instance.api_key}, timeout=60)
         logger.info(f"Sync grupos: status={resp.status_code} body={resp.text[:300]}")
         resp.raise_for_status()
-        groups_data = resp.json()
+        raw = resp.json()
     except httpx.HTTPStatusError as e:
         return {"updated": 0, "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
     except Exception as e:
         return {"updated": 0, "error": str(e)}
 
-    # A API pode retornar lista diretamente ou dentro de uma chave
-    if isinstance(groups_data, dict):
-        groups_data = groups_data.get("groups") or groups_data.get("data") or []
-
+    groups_data = raw
+    if isinstance(raw, dict):
+        groups_data = raw.get("groups") or raw.get("data") or raw.get("group") or []
     if not isinstance(groups_data, list):
-        return {"updated": 0, "error": f"Resposta inesperada: {str(groups_data)[:200]}"}
+        return {"updated": 0, "error": f"Resposta inesperada: {str(raw)[:200]}"}
 
+    now = datetime.utcnow()
     updated = 0
+    created = 0
     for group in groups_data:
         group_id = group.get("id", "")
-        subject = group.get("subject") or group.get("name")
-        if not group_id or not subject:
+        if not group_id:
             continue
+        contact_phone = _normalize_group_id(group_id)
+        subject = group.get("subject") or group.get("name") or ""
+        picture_url = group.get("pictureUrl") or group.get("picture") or None
 
-        contact_phone = group_id.split("@")[0].split(":")[0]
         conv = (
             db.query(Conversation)
             .filter(
@@ -404,12 +546,28 @@ def sync_group_names(db: Session, instance_id: int) -> dict:
             .first()
         )
         if conv:
-            conv.contact_name = subject
+            if subject:
+                conv.contact_name = subject
+            if picture_url:
+                conv.contact_avatar_url = picture_url
             updated += 1
+        else:
+            conv = Conversation(
+                contact_phone=contact_phone,
+                contact_name=subject or None,
+                contact_avatar_url=picture_url,
+                instance_id=instance.id,
+                status=ConversationStatus.open,
+                opened_at=now,
+                last_message_at=now,
+                is_group=True,
+            )
+            db.add(conv)
+            created += 1
 
     db.commit()
-    logger.info(f"Sync grupos: {updated} atualizado(s) de {len(groups_data)} grupo(s) na API")
-    return {"updated": updated, "total_api": len(groups_data)}
+    logger.info(f"Sync grupos: {updated} atualizado(s), {created} criado(s) de {len(groups_data)} na API")
+    return {"updated": updated + created, "total_api": len(groups_data)}
 
 
 def format_response_time(seconds: Optional[float]) -> str:
