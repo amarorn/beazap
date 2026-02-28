@@ -71,6 +71,25 @@ class OverviewComparison(BaseModel):
     change_resolution_rate: float
 
 
+class ExtendedMetrics(BaseModel):
+    avg_resolution_time_seconds: Optional[float] = None
+    abandonment_rate: float
+    sla_5min_rate: float
+    sla_15min_rate: float
+    sla_30min_rate: float
+    conversations_no_response_1h: int
+    conversations_no_response_4h: int
+
+
+class DailyExtendedMetrics(BaseModel):
+    date: str
+    avg_resolution_seconds: Optional[float] = None
+    abandonment_rate: float
+    sla_5min_rate: float
+    sla_15min_rate: float
+    sla_30min_rate: float
+
+
 class ConversationDetail(BaseModel):
     id: int
     contact_phone: str

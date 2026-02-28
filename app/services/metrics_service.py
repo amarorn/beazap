@@ -11,6 +11,8 @@ from app.schemas.metrics import (
     AttendantMetrics,
     OverviewMetrics,
     OverviewComparison,
+    ExtendedMetrics,
+    DailyExtendedMetrics,
     DailyVolume,
     DailySla,
     DailyStatus,
@@ -158,6 +160,114 @@ def get_overview_comparison(
         change_messages_today=_pct_change(tm, ym),
         change_resolution_rate=_pct_change(current["resolution_rate"], previous["resolution_rate"]),
     )
+
+
+def get_extended_metrics(db: Session, instance_id: Optional[int] = None) -> ExtendedMetrics:
+    """Métricas estendidas: tempo de resolução, SLA, abandono, conversas sem resposta."""
+    now = datetime.utcnow()
+    base = db.query(Conversation).filter(Conversation.is_group == False)
+    if instance_id:
+        base = base.filter(Conversation.instance_id == instance_id)
+
+    total = base.count()
+    abandoned = base.filter(Conversation.status == ConversationStatus.abandoned).count()
+    abandonment_rate = round((abandoned / total * 100), 1) if total > 0 else 0.0
+
+    resolved_with_times = base.filter(
+        Conversation.status == ConversationStatus.resolved,
+        Conversation.resolved_at.isnot(None),
+        Conversation.opened_at.isnot(None),
+    ).all()
+    resolution_seconds = [
+        (c.resolved_at - c.opened_at).total_seconds()
+        for c in resolved_with_times
+    ]
+    avg_resolution = round(sum(resolution_seconds) / len(resolution_seconds), 1) if resolution_seconds else None
+
+    with_first_response = base.filter(
+        Conversation.first_response_time_seconds.isnot(None),
+    )
+    total_with_resp = with_first_response.count()
+    sla_5 = with_first_response.filter(Conversation.first_response_time_seconds <= 300).count()
+    sla_15 = with_first_response.filter(Conversation.first_response_time_seconds <= 900).count()
+    sla_30 = with_first_response.filter(Conversation.first_response_time_seconds <= 1800).count()
+    sla_5_rate = round((sla_5 / total_with_resp * 100), 1) if total_with_resp > 0 else 0.0
+    sla_15_rate = round((sla_15 / total_with_resp * 100), 1) if total_with_resp > 0 else 0.0
+    sla_30_rate = round((sla_30 / total_with_resp * 100), 1) if total_with_resp > 0 else 0.0
+
+    open_no_resp = base.filter(
+        Conversation.status == ConversationStatus.open,
+        Conversation.first_response_at.is_(None),
+    )
+    threshold_1h = now - timedelta(hours=1)
+    threshold_4h = now - timedelta(hours=4)
+    no_resp_1h = open_no_resp.filter(Conversation.opened_at < threshold_1h).count()
+    no_resp_4h = open_no_resp.filter(Conversation.opened_at < threshold_4h).count()
+
+    return ExtendedMetrics(
+        avg_resolution_time_seconds=avg_resolution,
+        abandonment_rate=abandonment_rate,
+        sla_5min_rate=sla_5_rate,
+        sla_15min_rate=sla_15_rate,
+        sla_30min_rate=sla_30_rate,
+        conversations_no_response_1h=no_resp_1h,
+        conversations_no_response_4h=no_resp_4h,
+    )
+
+
+def get_daily_extended_metrics(
+    db: Session,
+    days: int = 7,
+    instance_id: Optional[int] = None,
+) -> List[DailyExtendedMetrics]:
+    """Métricas estendidas por dia para gráficos."""
+    result = []
+    for i in range(days - 1, -1, -1):
+        day_start = (datetime.utcnow() - timedelta(days=i)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        day_end = day_start + timedelta(days=1)
+
+        base = db.query(Conversation).filter(
+            Conversation.is_group == False,
+            Conversation.opened_at >= day_start,
+            Conversation.opened_at < day_end,
+        )
+        if instance_id:
+            base = base.filter(Conversation.instance_id == instance_id)
+
+        total = base.count()
+        abandoned = base.filter(Conversation.status == ConversationStatus.abandoned).count()
+        abandonment_rate = round((abandoned / total * 100), 1) if total > 0 else 0.0
+
+        resolved = base.filter(
+            Conversation.status == ConversationStatus.resolved,
+            Conversation.resolved_at.isnot(None),
+            Conversation.opened_at.isnot(None),
+        ).all()
+        resolution_seconds = [(c.resolved_at - c.opened_at).total_seconds() for c in resolved]
+        avg_resolution = round(sum(resolution_seconds) / len(resolution_seconds), 1) if resolution_seconds else None
+
+        with_resp = base.filter(Conversation.first_response_time_seconds.isnot(None))
+        total_resp = with_resp.count()
+        sla_5 = with_resp.filter(Conversation.first_response_time_seconds <= 300).count()
+        sla_15 = with_resp.filter(Conversation.first_response_time_seconds <= 900).count()
+        sla_30 = with_resp.filter(Conversation.first_response_time_seconds <= 1800).count()
+        sla_5_rate = round((sla_5 / total_resp * 100), 1) if total_resp > 0 else 0.0
+        sla_15_rate = round((sla_15 / total_resp * 100), 1) if total_resp > 0 else 0.0
+        sla_30_rate = round((sla_30 / total_resp * 100), 1) if total_resp > 0 else 0.0
+
+        result.append(
+            DailyExtendedMetrics(
+                date=day_start.strftime("%d/%m"),
+                avg_resolution_seconds=avg_resolution,
+                abandonment_rate=abandonment_rate,
+                sla_5min_rate=sla_5_rate,
+                sla_15min_rate=sla_15_rate,
+                sla_30min_rate=sla_30_rate,
+            )
+        )
+    return result
 
 
 def get_attendant_metrics(db: Session, instance_id: Optional[int] = None) -> List[AttendantMetrics]:
@@ -648,8 +758,19 @@ def sync_group_names(db: Session, instance_id: int) -> dict:
         logger.info(f"Sync grupos: status={resp.status_code} body={resp.text[:300]}")
         resp.raise_for_status()
         raw = resp.json()
+    except httpx.ConnectError as e:
+        return {"updated": 0, "error": f"Não foi possível conectar à Evolution API. Verifique a URL ({instance.api_url}) e se o servidor está online."}
+    except httpx.ReadTimeout:
+        return {"updated": 0, "error": "A Evolution API demorou para responder. Tente novamente."}
     except httpx.HTTPStatusError as e:
-        return {"updated": 0, "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
+        try:
+            body = e.response.json()
+            msg = body.get("response", {}).get("message") or body.get("error") or e.response.text[:150]
+        except Exception:
+            msg = e.response.text[:150]
+        if "Connection Closed" in str(msg) or "connection" in str(msg).lower():
+            return {"updated": 0, "error": "A Evolution API perdeu a conexão com o WhatsApp. Reconecte a instância nas configurações da Evolution API e tente novamente."}
+        return {"updated": 0, "error": f"Evolution API retornou erro {e.response.status_code}: {msg}"}
     except Exception as e:
         return {"updated": 0, "error": str(e)}
 

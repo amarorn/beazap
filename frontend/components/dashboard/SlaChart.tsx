@@ -53,9 +53,9 @@ export function SlaChart({ data }: SlaChartProps) {
             <Tooltip
               contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
               cursor={{ fill: '#f4f4f5' }}
-              formatter={(value: number, _name, props: { payload: DailySla }) => [
-                props.payload.count > 0 ? formatResponseTime(value) : '—',
-                `Média (${props.payload.count} atendimento${props.payload.count !== 1 ? 's' : ''})`,
+              formatter={(value: number | undefined, _name, props: { payload?: DailySla }) => [
+                (props.payload?.count ?? 0) > 0 ? formatResponseTime(value ?? 0) : '—',
+                `Média (${props.payload?.count ?? 0} atendimento${(props.payload?.count ?? 0) !== 1 ? 's' : ''})`,
               ]}
               labelFormatter={label => `Dia ${label}`}
             />

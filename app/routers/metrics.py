@@ -20,6 +20,20 @@ def overview(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
     return metrics_service.get_overview_metrics(db, instance_id)
 
 
+@router.get("/extended")
+def extended_metrics(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_extended_metrics(db, instance_id)
+
+
+@router.get("/extended/daily")
+def daily_extended_metrics(
+    days: int = Query(default=7, ge=1, le=30),
+    instance_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_daily_extended_metrics(db, days, instance_id)
+
+
 @router.get("/overview-comparison")
 def overview_comparison(
     days: int = Query(default=7, ge=1, le=30),

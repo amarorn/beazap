@@ -47,6 +47,25 @@ export interface OverviewComparison {
   change_resolution_rate: number
 }
 
+export interface ExtendedMetrics {
+  avg_resolution_time_seconds: number | null
+  abandonment_rate: number
+  sla_5min_rate: number
+  sla_15min_rate: number
+  sla_30min_rate: number
+  conversations_no_response_1h: number
+  conversations_no_response_4h: number
+}
+
+export interface DailyExtendedMetrics {
+  date: string
+  avg_resolution_seconds: number | null
+  abandonment_rate: number
+  sla_5min_rate: number
+  sla_15min_rate: number
+  sla_30min_rate: number
+}
+
 export interface HourlyVolume {
   hour: number
   count: number

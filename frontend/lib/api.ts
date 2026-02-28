@@ -2,6 +2,8 @@ import axios from 'axios'
 import type {
   OverviewMetrics,
   OverviewComparison,
+  ExtendedMetrics,
+  DailyExtendedMetrics,
   AttendantMetrics,
   DailyVolume,
   DailySla,
@@ -27,6 +29,16 @@ export const metricsApi = {
 
   getOverviewComparison: (days = 7, instanceId?: number) =>
     api.get<OverviewComparison>('/api/metrics/overview-comparison', {
+      params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
+    }).then(r => r.data),
+
+  getExtendedMetrics: (instanceId?: number) =>
+    api.get<ExtendedMetrics>('/api/metrics/extended', {
+      params: instanceId ? { instance_id: instanceId } : {},
+    }).then(r => r.data),
+
+  getDailyExtendedMetrics: (days = 7, instanceId?: number) =>
+    api.get<DailyExtendedMetrics[]>('/api/metrics/extended/daily', {
       params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
     }).then(r => r.data),
 

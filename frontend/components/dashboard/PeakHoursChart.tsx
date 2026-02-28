@@ -45,7 +45,7 @@ export function PeakHoursChart({ data }: PeakHoursChartProps) {
                 fontSize: 12,
               }}
               cursor={{ fill: '#f4f4f5' }}
-              formatter={(value: number) => [value, 'Mensagens']}
+              formatter={(value: number | undefined) => [value ?? 0, 'Mensagens']}
               labelFormatter={(label) => `Horário: ${label}`}
             />
             <Bar dataKey="count" name="Mensagens" fill="#10b981" radius={[2, 2, 0, 0]} />
