@@ -40,6 +40,19 @@ export interface OverviewMetrics {
   total_conversations_today: number
 }
 
+export interface OverviewComparison {
+  overview: OverviewMetrics
+  change_conversations_today: number
+  change_messages_today: number
+  change_resolution_rate: number
+}
+
+export interface HourlyVolume {
+  hour: number
+  count: number
+  label: string
+}
+
 export interface DailySla {
   date: string
   avg_response_seconds: number | null
@@ -97,6 +110,7 @@ export interface ConversationDetail {
   responsible_name?: string | null
   manager_id?: number | null
   manager_name?: string | null
+  group_tags?: string[] | null
 }
 
 export interface CategoryCount {

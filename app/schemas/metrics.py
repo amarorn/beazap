@@ -37,6 +37,12 @@ class DailyStatus(BaseModel):
     waiting: int
 
 
+class HourlyVolume(BaseModel):
+    hour: int
+    count: int
+    label: str
+
+
 class GroupOverviewMetrics(BaseModel):
     total_groups: int
     groups_with_responsible: int
@@ -56,6 +62,13 @@ class OverviewMetrics(BaseModel):
     resolution_rate: float
     total_messages_today: int
     total_conversations_today: int
+
+
+class OverviewComparison(BaseModel):
+    overview: OverviewMetrics
+    change_conversations_today: float
+    change_messages_today: float
+    change_resolution_rate: float
 
 
 class ConversationDetail(BaseModel):
@@ -83,6 +96,7 @@ class ConversationDetail(BaseModel):
     responsible_name: Optional[str] = None
     manager_id: Optional[int] = None
     manager_name: Optional[str] = None
+    group_tags: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

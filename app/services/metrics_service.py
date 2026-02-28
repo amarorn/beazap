@@ -7,7 +7,19 @@ from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection
 from app.models.attendant import Attendant
 from app.models.instance import Instance
-from app.schemas.metrics import AttendantMetrics, OverviewMetrics, DailyVolume, DailySla, DailyStatus, ConversationDetail, AnalysisStats, CategoryCount, GroupOverviewMetrics
+from app.schemas.metrics import (
+    AttendantMetrics,
+    OverviewMetrics,
+    OverviewComparison,
+    DailyVolume,
+    DailySla,
+    DailyStatus,
+    HourlyVolume,
+    ConversationDetail,
+    AnalysisStats,
+    CategoryCount,
+    GroupOverviewMetrics,
+)
 
 
 def get_overview_metrics(db: Session, instance_id: Optional[int] = None) -> OverviewMetrics:
@@ -58,6 +70,93 @@ def get_overview_metrics(db: Session, instance_id: Optional[int] = None) -> Over
         resolution_rate=round(resolution_rate, 1),
         total_messages_today=today_messages,
         total_conversations_today=today_convs,
+    )
+
+
+def get_overview_comparison(
+    db: Session,
+    days: int = 7,
+    instance_id: Optional[int] = None,
+) -> OverviewComparison:
+    """Retorna métricas do período atual vs anterior para comparativo."""
+    now = datetime.utcnow()
+    current_start = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    previous_start = (now - timedelta(days=days * 2)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _metrics_for_period(start: datetime, end: datetime) -> dict:
+        base = db.query(Conversation)
+        if instance_id:
+            base = base.filter(Conversation.instance_id == instance_id)
+        convs = base.filter(
+            Conversation.opened_at >= start,
+            Conversation.opened_at < end,
+        )
+        total = convs.count()
+        resolved = convs.filter(Conversation.status == ConversationStatus.resolved).count()
+        msgs = (
+            db.query(func.count(Message.id))
+            .join(Conversation)
+            .filter(
+                Message.timestamp >= start,
+                Message.timestamp < end,
+            )
+        )
+        if instance_id:
+            msgs = msgs.filter(Conversation.instance_id == instance_id)
+        msg_count = msgs.scalar() or 0
+        rate = (resolved / total * 100) if total > 0 else 0
+        return {"conversations": total, "messages": msg_count, "resolution_rate": rate}
+
+    current = _metrics_for_period(current_start, now)
+    previous = _metrics_for_period(previous_start, current_start)
+
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    today_convs = (
+        db.query(func.count(Conversation.id))
+        .filter(Conversation.opened_at >= today_start)
+    )
+    yesterday_convs = (
+        db.query(func.count(Conversation.id))
+        .filter(
+            Conversation.opened_at >= yesterday_start,
+            Conversation.opened_at < today_start,
+        )
+    )
+    today_msgs = (
+        db.query(func.count(Message.id))
+        .join(Conversation)
+        .filter(Message.timestamp >= today_start)
+    )
+    yesterday_msgs = (
+        db.query(func.count(Message.id))
+        .join(Conversation)
+        .filter(
+            Message.timestamp >= yesterday_start,
+            Message.timestamp < today_start,
+        )
+    )
+    if instance_id:
+        today_convs = today_convs.filter(Conversation.instance_id == instance_id)
+        yesterday_convs = yesterday_convs.filter(Conversation.instance_id == instance_id)
+        today_msgs = today_msgs.filter(Conversation.instance_id == instance_id)
+        yesterday_msgs = yesterday_msgs.filter(Conversation.instance_id == instance_id)
+
+    tc = today_convs.scalar() or 0
+    yc = yesterday_convs.scalar() or 0
+    tm = today_msgs.scalar() or 0
+    ym = yesterday_msgs.scalar() or 0
+
+    def _pct_change(curr: float, prev: float) -> float:
+        if prev == 0:
+            return 100.0 if curr > 0 else 0.0
+        return round(((curr - prev) / prev) * 100, 1)
+
+    return OverviewComparison(
+        overview=get_overview_metrics(db, instance_id),
+        change_conversations_today=_pct_change(tc, yc),
+        change_messages_today=_pct_change(tm, ym),
+        change_resolution_rate=_pct_change(current["resolution_rate"], previous["resolution_rate"]),
     )
 
 
@@ -119,6 +218,24 @@ def get_attendant_metrics(db: Session, instance_id: Optional[int] = None) -> Lis
         )
 
     return result
+
+
+def get_hourly_volume(
+    db: Session,
+    days: int = 7,
+    instance_id: Optional[int] = None,
+) -> List[HourlyVolume]:
+    """Mensagens por hora do dia (0-23) nos últimos N dias."""
+    start = datetime.utcnow() - timedelta(days=days)
+    q = db.query(Message).join(Conversation).filter(Message.timestamp >= start)
+    if instance_id:
+        q = q.filter(Conversation.instance_id == instance_id)
+    messages = q.all()
+    by_hour = [0] * 24
+    for m in messages:
+        by_hour[m.timestamp.hour] += 1
+    labels = [f"{h:02d}h" for h in range(24)]
+    return [HourlyVolume(hour=h, count=c, label=labels[h]) for h, c in enumerate(by_hour)]
 
 
 def get_daily_volume(
@@ -279,6 +396,12 @@ def get_recent_conversations(
     return result
 
 
+def _parse_group_tags(tags_str: Optional[str]) -> Optional[List[str]]:
+    if not tags_str or not tags_str.strip():
+        return None
+    return [t.strip() for t in tags_str.split(",") if t.strip()]
+
+
 def _to_conversation_detail(c: Conversation) -> ConversationDetail:
     return ConversationDetail(
         id=c.id,
@@ -301,6 +424,7 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         responsible_name=c.responsible.name if c.responsible else None,
         manager_id=c.manager_id,
         manager_name=c.group_manager.name if c.group_manager else None,
+        group_tags=_parse_group_tags(c.group_tags),
     )
 
 
@@ -395,16 +519,23 @@ def get_group_conversations(
     db: Session,
     instance_id: Optional[int] = None,
     limit: int = 50,
+    tag: Optional[str] = None,
 ) -> List[ConversationDetail]:
     query = db.query(Conversation).filter(Conversation.is_group == True)
     if instance_id:
         query = query.filter(Conversation.instance_id == instance_id)
 
-    convs = query.order_by(Conversation.last_message_at.desc()).limit(limit).all()
+    convs = query.order_by(Conversation.last_message_at.desc()).limit(limit * 2 if tag else limit).all()
 
     result = []
     for c in convs:
+        if tag:
+            tags_list = _parse_group_tags(c.group_tags)
+            if not tags_list or tag.lower() not in [t.lower() for t in tags_list]:
+                continue
         result.append(_to_conversation_detail(c))
+        if tag and len(result) >= limit:
+            break
     return result
 
 
@@ -413,6 +544,7 @@ def update_group_config(
     group_id: int,
     responsible_id: Optional[int],
     manager_id: Optional[int],
+    group_tags: Optional[List[str]] = None,
 ) -> bool:
     conv = db.query(Conversation).filter(
         Conversation.id == group_id,
@@ -422,6 +554,8 @@ def update_group_config(
         return False
     conv.responsible_id = responsible_id
     conv.manager_id = manager_id
+    if group_tags is not None:
+        conv.group_tags = ",".join(t.strip() for t in group_tags if t and t.strip()) or None
     db.commit()
     return True
 

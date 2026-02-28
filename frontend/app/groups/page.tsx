@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { metricsApi, attendantsApi } from '@/lib/api'
 import { useInstance } from '@/lib/instance-context'
@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Users, MessageSquare, UserCheck, ShieldCheck, RefreshCw } from 'lucide-react'
+import { Users, MessageSquare, UserCheck, ShieldCheck, RefreshCw, Tag } from 'lucide-react'
 import type { ConversationDetail } from '@/types'
 
 function GroupAvatar({ name, avatarUrl }: { name: string | null; avatarUrl?: string | null }) {
@@ -55,9 +55,15 @@ function GroupConfigRow({
   const [manager, setManager] = useState<string>(
     group.manager_id ? String(group.manager_id) : 'none'
   )
+  const [tags, setTags] = useState<string>(
+    (group.group_tags || []).join(', ')
+  )
+  useEffect(() => {
+    setTags((group.group_tags || []).join(', '))
+  }, [group.group_tags])
 
   const configMutation = useMutation({
-    mutationFn: (data: { responsible_id: number | null; manager_id: number | null }) =>
+    mutationFn: (data: { responsible_id?: number | null; manager_id?: number | null; group_tags?: string[] }) =>
       metricsApi.updateGroupConfig(group.id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
   })
@@ -78,6 +84,17 @@ function GroupConfigRow({
     })
   }
 
+  function handleTagsBlur() {
+    const newTags = tags.split(',').map(t => t.trim()).filter(Boolean)
+    if (JSON.stringify(newTags) !== JSON.stringify(group.group_tags || [])) {
+      configMutation.mutate({
+        responsible_id: responsible !== 'none' ? Number(responsible) : null,
+        manager_id: manager !== 'none' ? Number(manager) : null,
+        group_tags: newTags,
+      })
+    }
+  }
+
   const agents = attendants.filter(a => a.role === 'agent')
   const managers = attendants.filter(a => a.role === 'manager')
 
@@ -94,6 +111,17 @@ function GroupConfigRow({
 
       <td className="px-5 py-3 text-zinc-500 dark:text-zinc-400 font-mono text-xs">
         {group.contact_phone}
+      </td>
+
+      <td className="px-5 py-3">
+        <input
+          type="text"
+          value={tags}
+          onChange={e => setTags(e.target.value)}
+          onBlur={handleTagsBlur}
+          placeholder="vendas, suporte..."
+          className="w-28 text-xs border border-zinc-200 dark:border-zinc-600 rounded px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        />
       </td>
 
       {/* Responsável */}
@@ -160,10 +188,16 @@ function GroupConfigRow({
 export default function GroupsPage() {
   const { selectedInstanceId } = useInstance()
   const queryClient = useQueryClient()
+  const [tagFilter, setTagFilter] = useState<string>('')
 
   const { data: groups = [], isLoading } = useQuery({
-    queryKey: ['groups', selectedInstanceId],
-    queryFn: () => metricsApi.getGroups({ instance_id: selectedInstanceId, limit: 100 }),
+    queryKey: ['groups', selectedInstanceId, tagFilter],
+    queryFn: () =>
+      metricsApi.getGroups({
+        instance_id: selectedInstanceId,
+        limit: 100,
+        ...(tagFilter ? { tag: tagFilter } : {}),
+      }),
   })
 
   const { data: attendants = [] } = useQuery({
@@ -208,13 +242,23 @@ export default function GroupsPage() {
         </Button>
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-5 text-xs text-zinc-500 dark:text-zinc-400">
-        <span className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-4 text-xs">
+        <div className="flex items-center gap-2">
+          <Tag className="w-3.5 h-3.5 text-zinc-500" />
+          <span className="text-zinc-500 dark:text-zinc-400">Filtrar por tag:</span>
+          <input
+            type="text"
+            value={tagFilter}
+            onChange={e => setTagFilter(e.target.value)}
+            placeholder="ex: vendas"
+            className="w-28 border border-zinc-200 dark:border-zinc-600 rounded px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+        </div>
+        <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
           <UserCheck className="w-3.5 h-3.5 text-blue-500" />
           Responsável — atendente que monitora o grupo
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
           <ShieldCheck className="w-3.5 h-3.5 text-violet-500" />
           Gerente — supervisor direto
         </span>
@@ -225,7 +269,7 @@ export default function GroupsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/80">
-                {['Grupo', 'ID do Grupo', 'Responsável', 'Gerente', 'Primeira mensagem', 'Msgs', ''].map(h => (
+                {['Grupo', 'ID do Grupo', 'Tags', 'Responsável', 'Gerente', 'Primeira mensagem', 'Msgs', ''].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-zinc-500 dark:text-zinc-400 font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -235,14 +279,14 @@ export default function GroupsPage() {
             <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={8} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
                     Carregando...
                   </td>
                 </tr>
               )}
               {!isLoading && groups.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={8} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
                     Nenhum grupo encontrado. Envie uma mensagem em um grupo onde o WhatsApp está conectado.
                   </td>
                 </tr>

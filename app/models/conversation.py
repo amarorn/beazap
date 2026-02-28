@@ -40,6 +40,7 @@ class Conversation(Base):
     # Vínculos de grupo: responsável e gerente direto
     responsible_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
     manager_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
+    group_tags = Column(String(200), nullable=True)
 
     # Análise LLM
     analysis_category = Column(String(30), nullable=True)    # reclamacao, problema_tecnico, nova_contratacao, suporte, elogio, informacao, outro

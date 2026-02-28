@@ -1,10 +1,12 @@
 import axios from 'axios'
 import type {
   OverviewMetrics,
+  OverviewComparison,
   AttendantMetrics,
   DailyVolume,
   DailySla,
   DailyStatus,
+  HourlyVolume,
   ConversationDetail,
   ConversationMessage,
   AnalysisStats,
@@ -21,6 +23,16 @@ export const metricsApi = {
   getOverview: (instanceId?: number) =>
     api.get<OverviewMetrics>('/api/metrics/overview', {
       params: instanceId ? { instance_id: instanceId } : {},
+    }).then(r => r.data),
+
+  getOverviewComparison: (days = 7, instanceId?: number) =>
+    api.get<OverviewComparison>('/api/metrics/overview-comparison', {
+      params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
+    }).then(r => r.data),
+
+  getHourlyVolume: (days = 7, instanceId?: number) =>
+    api.get<HourlyVolume[]>('/api/metrics/hourly-volume', {
+      params: { days, ...(instanceId ? { instance_id: instanceId } : {}) },
     }).then(r => r.data),
 
   getAttendants: (instanceId?: number) =>
@@ -68,7 +80,7 @@ export const metricsApi = {
       params: instanceId ? { instance_id: instanceId } : {},
     }).then(r => r.data),
 
-  updateGroupConfig: (id: number, data: { responsible_id: number | null; manager_id: number | null }) =>
+  updateGroupConfig: (id: number, data: { responsible_id?: number | null; manager_id?: number | null; group_tags?: string[] }) =>
     api.patch(`/api/metrics/groups/${id}/config`, data).then(r => r.data),
 
   syncGroupNames: (instanceId: number) =>
@@ -81,7 +93,7 @@ export const metricsApi = {
       params: instanceId ? { instance_id: instanceId } : {},
     }).then(r => r.data),
 
-  getGroups: (params?: { instance_id?: number; limit?: number }) =>
+  getGroups: (params?: { instance_id?: number; limit?: number; tag?: string }) =>
     api.get<ConversationDetail[]>('/api/metrics/groups', { params }).then(r => r.data),
 
   getGroupMessages: (id: number) =>

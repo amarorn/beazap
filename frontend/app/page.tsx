@@ -6,6 +6,7 @@ import { metricsApi } from '@/lib/api'
 import { useInstance } from '@/lib/instance-context'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { VolumeChart } from '@/components/dashboard/VolumeChart'
+import { PeakHoursChart } from '@/components/dashboard/PeakHoursChart'
 import { SlaChart } from '@/components/dashboard/SlaChart'
 import { StatusChart } from '@/components/dashboard/StatusChart'
 import { StatusDonut } from '@/components/dashboard/StatusDonut'
@@ -18,9 +19,14 @@ import { Users, ChevronRight } from 'lucide-react'
 export default function DashboardPage() {
   const { selectedInstanceId } = useInstance()
 
-  const { data: overview } = useQuery({
-    queryKey: ['overview', selectedInstanceId],
-    queryFn: () => metricsApi.getOverview(selectedInstanceId),
+  const { data: comparison } = useQuery({
+    queryKey: ['overview-comparison', selectedInstanceId],
+    queryFn: () => metricsApi.getOverviewComparison(7, selectedInstanceId),
+  })
+
+  const { data: hourlyVolume = [] } = useQuery({
+    queryKey: ['hourly-volume', selectedInstanceId],
+    queryFn: () => metricsApi.getHourlyVolume(7, selectedInstanceId),
   })
 
   const { data: attendants = [] } = useQuery({
@@ -67,31 +73,34 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      {overview && (
+      {comparison?.overview && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard
             label="Conversas Hoje"
-            value={overview.total_conversations_today}
-            sub={`${overview.waiting_conversations} esperando, ${overview.in_progress_conversations} em atendimento`}
+            value={comparison.overview.total_conversations_today}
+            sub={`${comparison.overview.waiting_conversations} esperando, ${comparison.overview.in_progress_conversations} em atendimento`}
             accent="green"
+            change={comparison.change_conversations_today}
           />
           <KpiCard
             label="Mensagens Hoje"
-            value={overview.total_messages_today}
+            value={comparison.overview.total_messages_today}
             sub="Recebidas + enviadas"
             accent="blue"
+            change={comparison.change_messages_today}
           />
           <KpiCard
             label="T.M. 1ª Resposta"
-            value={formatResponseTime(overview.avg_first_response_seconds)}
+            value={formatResponseTime(comparison.overview.avg_first_response_seconds)}
             sub="Média geral"
             accent="yellow"
           />
           <KpiCard
             label="Taxa de Resolução"
-            value={`${overview.resolution_rate}%`}
-            progress={overview.resolution_rate}
+            value={`${comparison.overview.resolution_rate}%`}
+            progress={comparison.overview.resolution_rate}
             accent="green"
+            change={comparison.change_resolution_rate}
           />
         </div>
       )}
@@ -152,12 +161,14 @@ export default function DashboardPage() {
         <div className="lg:col-span-2">
           <VolumeChart data={dailyVolume} />
         </div>
-        {overview && (
+        {comparison?.overview && (
           <div>
-            <StatusDonut data={overview} />
+            <StatusDonut data={comparison.overview} />
           </div>
         )}
       </div>
+
+      <PeakHoursChart data={hourlyVolume} />
 
       {/* Status Chart - Bar + Lines */}
       <StatusChart data={dailyStatus} />
