@@ -54,6 +54,12 @@ class ConversationDetail(BaseModel):
     analysis_summary: Optional[str] = None
     analysis_analyzed_at: Optional[datetime] = None
 
+    # Vínculos de grupo
+    responsible_id: Optional[int] = None
+    responsible_name: Optional[str] = None
+    manager_id: Optional[int] = None
+    manager_name: Optional[str] = None
+
     class Config:
         from_attributes = True
 
