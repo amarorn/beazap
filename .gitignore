@@ -29,6 +29,10 @@ node_modules/
 out/
 build/
 
+# Sora / temp
+output/
+tmp/
+
 # Logs
 *.log
 logs/
