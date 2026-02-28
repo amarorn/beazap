@@ -18,7 +18,16 @@ def list_instances(db: Session = Depends(get_db)):
 def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)):
     existing = db.query(Instance).filter(Instance.instance_name == payload.instance_name).first()
     if existing:
-        raise HTTPException(status_code=400, detail="instance_name já existe")
+        if existing.active:
+            raise HTTPException(status_code=400, detail="Já existe uma instância ativa com esse 'Instance name'. Use outro nome ou remova a instância atual.")
+        existing.name = payload.name
+        existing.api_url = payload.api_url
+        existing.api_key = payload.api_key
+        existing.phone_number = payload.phone_number
+        existing.active = True
+        db.commit()
+        db.refresh(existing)
+        return existing
     instance = Instance(**payload.model_dump())
     db.add(instance)
     db.commit()
