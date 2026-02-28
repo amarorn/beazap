@@ -58,6 +58,11 @@ export const metricsApi = {
   updateGroupConfig: (id: number, data: { responsible_id: number | null; manager_id: number | null }) =>
     api.patch(`/api/metrics/groups/${id}/config`, data).then(r => r.data),
 
+  syncGroupNames: (instanceId: number) =>
+    api.post<{ updated: number }>('/api/metrics/groups/sync-names', null, {
+      params: { instance_id: instanceId },
+    }).then(r => r.data),
+
   getGroups: (params?: { instance_id?: number; limit?: number }) =>
     api.get<ConversationDetail[]>('/api/metrics/groups', { params }).then(r => r.data),
 

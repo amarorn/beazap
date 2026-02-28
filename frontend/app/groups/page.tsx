@@ -8,8 +8,29 @@ import { useInstance } from '@/lib/instance-context'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatDate } from '@/lib/utils'
-import { Users, MessageSquare, UserCheck, ShieldCheck } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Users, MessageSquare, UserCheck, ShieldCheck, RefreshCw } from 'lucide-react'
 import type { ConversationDetail } from '@/types'
+
+function GroupAvatar({ name }: { name: string | null }) {
+  if (name) {
+    const initials = name
+      .split(' ')
+      .slice(0, 2)
+      .map(w => w[0]?.toUpperCase() ?? '')
+      .join('')
+    return (
+      <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+        {initials}
+      </div>
+    )
+  }
+  return (
+    <div className="w-8 h-8 bg-zinc-200 dark:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-500 dark:text-zinc-400 flex-shrink-0">
+      <Users className="w-4 h-4" />
+    </div>
+  )
+}
 
 function GroupConfigRow({
   group,
@@ -55,11 +76,9 @@ function GroupConfigRow({
     <tr className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/60 transition-colors">
       <td className="px-5 py-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-            <Users className="w-4 h-4" />
-          </div>
+          <GroupAvatar name={group.contact_name} />
           <span className="font-medium text-zinc-900 dark:text-zinc-100">
-            {group.contact_name || 'Grupo sem nome'}
+            {group.contact_name || <span className="text-zinc-400 dark:text-zinc-500 italic">Sem nome</span>}
           </span>
         </div>
       </td>
@@ -131,6 +150,7 @@ function GroupConfigRow({
 
 export default function GroupsPage() {
   const { selectedInstanceId } = useInstance()
+  const queryClient = useQueryClient()
 
   const { data: groups = [], isLoading } = useQuery({
     queryKey: ['groups', selectedInstanceId],
@@ -142,13 +162,33 @@ export default function GroupsPage() {
     queryFn: () => attendantsApi.list(),
   })
 
+  const syncMutation = useMutation({
+    mutationFn: () => metricsApi.syncGroupNames(selectedInstanceId!),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      alert(`${data.updated} grupo(s) atualizado(s)`)
+    },
+  })
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Grupos</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-          Vincule um responsável e gerente a cada grupo para acompanhamento
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Grupos</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Vincule um responsável e gerente a cada grupo para acompanhamento
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-8 gap-1.5 text-zinc-600 dark:text-zinc-400"
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending || !selectedInstanceId}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+          {syncMutation.isPending ? 'Sincronizando...' : 'Sincronizar nomes'}
+        </Button>
       </div>
 
       {/* Legend */}
