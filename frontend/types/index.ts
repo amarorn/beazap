@@ -155,6 +155,21 @@ export interface ConversationMessage {
   sender_name?: string | null
 }
 
+export interface SlaAlertEntry {
+  id: number
+  contact_name: string | null
+  contact_phone: string
+  attendant_name: string | null
+  opened_at: string
+  wait_seconds: number
+}
+
+export interface SlaAlertsResponse {
+  alerts: SlaAlertEntry[]
+  count: number
+  threshold_minutes: number
+}
+
 export interface CallLogEntry {
   id: number
   conversation_id: number

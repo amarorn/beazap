@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { metricsApi, attendantsApi } from '@/lib/api'
 import { useInstance } from '@/lib/instance-context'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -98,28 +98,21 @@ function GroupConfigRow({
 
   return (
     <tr className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/60 transition-colors border-b border-zinc-50 dark:border-zinc-800/50 last:border-0">
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-2.5 min-w-0">
           <GroupAvatar name={group.contact_name} avatarUrl={group.contact_avatar_url} />
-          <div className="min-w-0">
-            <span className="font-medium text-zinc-900 dark:text-zinc-100 block truncate">
-              {group.contact_name || <span className="text-zinc-400 dark:text-zinc-500 italic">Sem nome</span>}
-            </span>
-            <span className="text-[10px] font-mono text-zinc-400 md:hidden">{group.contact_phone}</span>
-          </div>
+          <span className="font-medium text-zinc-900 dark:text-zinc-100 block truncate max-w-[140px]">
+            {group.contact_name || <span className="text-zinc-400 dark:text-zinc-500 italic">Sem nome</span>}
+          </span>
         </div>
       </td>
 
-      <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400 font-mono text-xs hidden md:table-cell">
-        {group.contact_phone}
-      </td>
-
-      <td className="px-4 py-3">
-        <div className="flex flex-wrap gap-1.5 items-center">
+      <td className="px-3 py-3">
+        <div className="flex flex-wrap gap-1 items-center">
           {(group.group_tags || []).map(t => (
             <span
               key={t}
-              className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+              className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
             >
               {t}
             </span>
@@ -129,18 +122,18 @@ function GroupConfigRow({
             value={tags}
             onChange={e => setTags(e.target.value)}
             onBlur={handleTagsBlur}
-            placeholder="vendas, suporte..."
-            className="w-24 min-w-0 text-xs border border-dashed border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-0.5 bg-transparent text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            placeholder="tag..."
+            className="w-16 min-w-0 text-xs border border-dashed border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-0.5 bg-transparent text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
         </div>
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <Select value={responsible} onValueChange={handleResponsibleChange}>
-          <SelectTrigger className="w-36 lg:w-40 h-8 text-xs">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <UserCheck className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-              <SelectValue placeholder="Sem responsável" />
+          <SelectTrigger className="w-32 h-8 text-xs">
+            <div className="flex items-center gap-1 min-w-0">
+              <UserCheck className="w-3 h-3 text-blue-500 flex-shrink-0" />
+              <SelectValue placeholder="Ninguém" />
             </div>
           </SelectTrigger>
           <SelectContent>
@@ -154,12 +147,12 @@ function GroupConfigRow({
         </Select>
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <Select value={manager} onValueChange={handleManagerChange}>
-          <SelectTrigger className="w-36 h-8 text-xs">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <ShieldCheck className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-              <SelectValue placeholder="Sem gerente" />
+          <SelectTrigger className="w-32 h-8 text-xs">
+            <div className="flex items-center gap-1 min-w-0">
+              <ShieldCheck className="w-3 h-3 text-violet-500 flex-shrink-0" />
+              <SelectValue placeholder="Ninguém" />
             </div>
           </SelectTrigger>
           <SelectContent>
@@ -173,12 +166,12 @@ function GroupConfigRow({
         </Select>
       </td>
 
-      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400 whitespace-nowrap text-xs hidden sm:table-cell">
+      <td className="px-3 py-3 text-zinc-600 dark:text-zinc-400 whitespace-nowrap text-xs hidden lg:table-cell">
         {formatDate(group.opened_at)}
       </td>
 
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2 text-xs">
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-1.5 text-xs">
           <span className="flex items-center gap-0.5 text-zinc-500 dark:text-zinc-400" title="Recebidas">
             <ArrowDownToLine className="w-3 h-3" />
             {group.inbound_count}
@@ -190,11 +183,11 @@ function GroupConfigRow({
         </div>
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <Link href={`/groups/${group.id}`}>
-          <button className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-2 py-1.5 rounded-md transition-colors">
+          <button className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-2 py-1.5 rounded-md transition-colors whitespace-nowrap">
             <MessageSquare className="w-3.5 h-3.5" />
-            Ver chat
+            Chat
           </button>
         </Link>
       </td>
@@ -323,9 +316,9 @@ export default function GroupsPage() {
         </div>
       </div>
 
-      <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm overflow-hidden">
+      <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[920px] text-sm">
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/80">
                 <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Grupo</th>

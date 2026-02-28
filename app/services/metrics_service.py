@@ -873,3 +873,50 @@ def format_response_time(seconds: Optional[float]) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     return f"{hours}h {minutes}min"
+
+
+def get_sla_alerts(
+    db: Session,
+    instance_id: Optional[int] = None,
+    threshold_minutes: int = 30,
+) -> dict:
+    threshold_dt = datetime.utcnow() - timedelta(minutes=threshold_minutes)
+    query = db.query(Conversation).filter(
+        Conversation.status == ConversationStatus.open,
+        Conversation.first_response_at == None,  # noqa: E711
+        Conversation.is_group == False,  # noqa: E712
+        Conversation.opened_at <= threshold_dt,
+    )
+    if instance_id:
+        query = query.filter(Conversation.instance_id == instance_id)
+    convs = query.order_by(Conversation.opened_at.asc()).limit(50).all()
+    now = datetime.utcnow()
+    alerts = [
+        {
+            "id": c.id,
+            "contact_name": c.contact_name,
+            "contact_phone": c.contact_phone,
+            "attendant_name": c.attendant.name if c.attendant else None,
+            "opened_at": c.opened_at.isoformat(),
+            "wait_seconds": int((now - c.opened_at).total_seconds()),
+        }
+        for c in convs
+    ]
+    return {"alerts": alerts, "count": len(alerts), "threshold_minutes": threshold_minutes}
+
+
+def assign_conversation(
+    db: Session,
+    conversation_id: int,
+    attendant_id: Optional[int],
+) -> bool:
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        return False
+    if attendant_id is not None:
+        att = db.query(Attendant).filter(Attendant.id == attendant_id).first()
+        if not att:
+            return False
+    conv.attendant_id = attendant_id
+    db.commit()
+    return True

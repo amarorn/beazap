@@ -12,6 +12,10 @@ class GroupConfigUpdate(BaseModel):
     manager_id: Optional[int] = None
     group_tags: Optional[list[str]] = None
 
+
+class AssignBody(BaseModel):
+    attendant_id: Optional[int] = None
+
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
 
@@ -118,6 +122,18 @@ def resolve_conversation(
     return {"status": "resolved"}
 
 
+@router.patch("/conversations/{conversation_id}/assign")
+def assign_conversation(
+    conversation_id: int,
+    body: AssignBody,
+    db: Session = Depends(get_db),
+):
+    ok = metrics_service.assign_conversation(db, conversation_id, body.attendant_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conversa ou atendente não encontrado")
+    return {"status": "assigned"}
+
+
 @router.post("/conversations/{conversation_id}/analyze")
 def analyze_conversation(
     conversation_id: int,
@@ -173,6 +189,15 @@ def update_group_config(
 @router.get("/groups/{conversation_id}/messages")
 def get_group_messages(conversation_id: int, db: Session = Depends(get_db)):
     return metrics_service.get_conversation_messages(db, conversation_id)
+
+
+@router.get("/sla-alerts")
+def sla_alerts(
+    instance_id: Optional[int] = None,
+    threshold_minutes: int = Query(default=30, ge=1, le=1440),
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_sla_alerts(db, instance_id, threshold_minutes)
 
 
 @router.get("/calls")

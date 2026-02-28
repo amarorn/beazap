@@ -14,6 +14,7 @@ import type {
   CallLogEntry,
   AnalysisStats,
   GroupOverviewMetrics,
+  SlaAlertsResponse,
   Instance,
   Attendant,
 } from '@/types'
@@ -114,6 +115,12 @@ export const metricsApi = {
 
   getCalls: (params?: { instance_id?: number; limit?: number; direction?: string }) =>
     api.get<CallLogEntry[]>('/api/metrics/calls', { params }).then(r => r.data),
+
+  getSlaAlerts: (params?: { instance_id?: number; threshold_minutes?: number }) =>
+    api.get<SlaAlertsResponse>('/api/metrics/sla-alerts', { params }).then(r => r.data),
+
+  assignConversation: (id: number, attendant_id: number | null) =>
+    api.patch(`/api/metrics/conversations/${id}/assign`, { attendant_id }).then(r => r.data),
 }
 
 export const instancesApi = {

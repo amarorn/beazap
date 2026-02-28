@@ -2,11 +2,12 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { metricsApi } from '@/lib/api'
+import { metricsApi, attendantsApi } from '@/lib/api'
 import { formatResponseTime, formatDate } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Phone, User, Clock, CheckCircle, Sparkles } from 'lucide-react'
 import { AnalysisBadge } from '@/components/analysis/AnalysisBadge'
 
@@ -58,6 +59,21 @@ export default function ConversationDetailPage() {
     mutationFn: metricsApi.analyzeConversation,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation', id] })
+    },
+  })
+
+  const { data: attendants = [] } = useQuery({
+    queryKey: ['attendants-list'],
+    queryFn: () => attendantsApi.list(),
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: ({ attendant_id }: { attendant_id: number | null }) =>
+      metricsApi.assignConversation(id, attendant_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation', id] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['sla-alerts'] })
     },
   })
 
@@ -114,8 +130,24 @@ export default function ConversationDetailPage() {
       <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
         <CardContent className="py-3 flex flex-wrap gap-5 text-sm">
           <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-            <User className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
-            <span>{conversation.attendant_name || 'Sem atendente'}</span>
+            <User className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 flex-shrink-0" />
+            <Select
+              value={conversation.attendant_name ? String(attendants.find(a => a.name === conversation.attendant_name)?.id ?? '') : 'none'}
+              onValueChange={v => assignMutation.mutate({ attendant_id: v === 'none' ? null : Number(v) })}
+              disabled={assignMutation.isPending}
+            >
+              <SelectTrigger className="h-6 text-xs border-0 bg-transparent shadow-none px-0 gap-1 focus:ring-0 w-auto min-w-[120px]">
+                <SelectValue placeholder="Sem atendente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem atendente</SelectItem>
+                {attendants.map(att => (
+                  <SelectItem key={att.id} value={String(att.id)}>
+                    {att.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
             <Phone className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />

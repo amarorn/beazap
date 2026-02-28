@@ -61,6 +61,15 @@ export default function ConversationsPage() {
     },
   })
 
+  const assignMutation = useMutation({
+    mutationFn: ({ id, attendant_id }: { id: number; attendant_id: number | null }) =>
+      metricsApi.assignConversation(id, attendant_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['sla-alerts'] })
+    },
+  })
+
   return (
     <div className="space-y-5">
       <div>
@@ -129,7 +138,31 @@ export default function ConversationsPage() {
                       <p className="font-medium text-zinc-900 dark:text-zinc-100">{conv.contact_name || '—'}</p>
                       <p className="text-xs text-zinc-400 dark:text-zinc-500">{conv.contact_phone}</p>
                     </td>
-                    <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">{conv.attendant_name || '—'}</td>
+                    <td className="px-5 py-3">
+                      {conv.status === 'open' ? (
+                        <Select
+                          value={conv.attendant_name ? String(attendants.find(a => a.name === conv.attendant_name)?.id ?? '') : 'none'}
+                          onValueChange={v =>
+                            assignMutation.mutate({ id: conv.id, attendant_id: v === 'none' ? null : Number(v) })
+                          }
+                          disabled={assignMutation.isPending}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-36 bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">—</SelectItem>
+                            {attendants.map(att => (
+                              <SelectItem key={att.id} value={String(att.id)}>
+                                {att.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-zinc-600 dark:text-zinc-400">{conv.attendant_name || '—'}</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       <Badge className={`text-xs ${status.className}`}>{status.label}</Badge>
                     </td>
