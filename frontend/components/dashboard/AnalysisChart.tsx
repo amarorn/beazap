@@ -85,7 +85,7 @@ export function AnalysisChart({ data }: AnalysisChartProps) {
             <Tooltip
               contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
               cursor={{ fill: 'transparent' }}
-              formatter={(value: number) => [value, 'conversas']}
+              formatter={(value) => [value ?? 0, 'conversas']}
             />
             <Bar dataKey="count" radius={[0, 4, 4, 0]}>
               {data.categories.map(cat => (

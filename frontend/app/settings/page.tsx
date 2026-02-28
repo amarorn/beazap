@@ -126,7 +126,9 @@ export default function SettingsPage() {
                 Adicionar Instância
               </Button>
               {createInstance.isError && (
-                <p className="text-xs text-red-500">Erro ao criar instância. Verifique os dados.</p>
+                <p className="text-xs text-red-500">
+                  {(createInstance.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Erro ao criar instância. Verifique os dados.'}
+                </p>
               )}
             </div>
           </CardContent>

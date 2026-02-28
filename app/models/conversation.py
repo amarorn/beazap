@@ -17,6 +17,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     contact_phone = Column(String(30), nullable=False, index=True)
     contact_name = Column(String(150), nullable=True)
+    contact_avatar_url = Column(String(500), nullable=True)
     attendant_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
     instance_id = Column(Integer, ForeignKey("instances.id"), nullable=False)
     status = Column(Enum(ConversationStatus), default=ConversationStatus.open)
@@ -39,6 +40,7 @@ class Conversation(Base):
     # Vínculos de grupo: responsável e gerente direto
     responsible_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
     manager_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
+    group_tags = Column(String(200), nullable=True)
 
     # Análise LLM
     analysis_category = Column(String(30), nullable=True)    # reclamacao, problema_tecnico, nova_contratacao, suporte, elogio, informacao, outro

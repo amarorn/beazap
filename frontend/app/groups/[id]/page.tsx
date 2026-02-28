@@ -73,9 +73,17 @@ export default function GroupDetailPage() {
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-          <Users className="w-5 h-5" />
-        </div>
+        {group.contact_avatar_url ? (
+          <img
+            src={group.contact_avatar_url}
+            alt={group.contact_name || 'Grupo'}
+            className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+          />
+        ) : (
+          <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
+        )}
         <div className="flex-1">
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
             {group.contact_name || 'Grupo sem nome'}

@@ -8,10 +8,15 @@ interface RecentConversationsProps {
   data: ConversationDetail[]
 }
 
-const statusConfig = {
-  open: { label: 'Aberta', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
-  resolved: { label: 'Resolvida', className: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' },
-  abandoned: { label: 'Abandonada', className: 'bg-red-100 text-red-700 hover:bg-red-100' },
+function getStatusDisplay(conv: ConversationDetail) {
+  if (conv.status === 'resolved') return { label: 'Concluído', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' }
+  if (conv.status === 'abandoned') return { label: 'Abandonado', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
+  if (conv.status === 'open') {
+    return conv.first_response_time_seconds != null
+      ? { label: 'Em atendimento', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' }
+      : { label: 'Esperando atendimento', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' }
+  }
+  return { label: conv.status, className: 'bg-zinc-100 text-zinc-700' }
 }
 
 export function RecentConversations({ data }: RecentConversationsProps) {
@@ -39,7 +44,7 @@ export function RecentConversations({ data }: RecentConversationsProps) {
       <CardContent className="p-0">
         <div className="divide-y divide-zinc-50 dark:divide-zinc-800">
           {data.map(conv => {
-            const status = statusConfig[conv.status]
+            const status = getStatusDisplay(conv)
             const displayName = conv.contact_name || conv.contact_phone
             return (
               <div key={conv.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-zinc-50/60 dark:hover:bg-zinc-800/60 transition-colors">

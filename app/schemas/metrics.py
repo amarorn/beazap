@@ -24,21 +24,77 @@ class DailyVolume(BaseModel):
     conversations: int
 
 
+class DailySla(BaseModel):
+    date: str
+    avg_response_seconds: Optional[float]
+    count: int
+
+
+class DailyStatus(BaseModel):
+    date: str
+    opened: int
+    in_progress: int
+    waiting: int
+
+
+class HourlyVolume(BaseModel):
+    hour: int
+    count: int
+    label: str
+
+
+class GroupOverviewMetrics(BaseModel):
+    total_groups: int
+    groups_with_responsible: int
+    groups_without_responsible: int
+    groups_active_today: int
+    messages_in_groups_today: int
+
+
 class OverviewMetrics(BaseModel):
     total_conversations: int
     open_conversations: int
     resolved_conversations: int
     abandoned_conversations: int
+    waiting_conversations: int
+    in_progress_conversations: int
     avg_first_response_seconds: Optional[float]
     resolution_rate: float
     total_messages_today: int
     total_conversations_today: int
 
 
+class OverviewComparison(BaseModel):
+    overview: OverviewMetrics
+    change_conversations_today: float
+    change_messages_today: float
+    change_resolution_rate: float
+
+
+class ExtendedMetrics(BaseModel):
+    avg_resolution_time_seconds: Optional[float] = None
+    abandonment_rate: float
+    sla_5min_rate: float
+    sla_15min_rate: float
+    sla_30min_rate: float
+    conversations_no_response_1h: int
+    conversations_no_response_4h: int
+
+
+class DailyExtendedMetrics(BaseModel):
+    date: str
+    avg_resolution_seconds: Optional[float] = None
+    abandonment_rate: float
+    sla_5min_rate: float
+    sla_15min_rate: float
+    sla_30min_rate: float
+
+
 class ConversationDetail(BaseModel):
     id: int
     contact_phone: str
     contact_name: Optional[str]
+    contact_avatar_url: Optional[str] = None
     attendant_name: Optional[str]
     status: str
     opened_at: datetime
@@ -59,6 +115,7 @@ class ConversationDetail(BaseModel):
     responsible_name: Optional[str] = None
     manager_id: Optional[int] = None
     manager_name: Optional[str] = None
+    group_tags: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
