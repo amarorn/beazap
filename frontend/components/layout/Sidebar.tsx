@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Instance } from '@/types'
 
@@ -16,6 +16,7 @@ interface SidebarProps {
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/conversations', label: 'Atendimentos', icon: MessageSquare },
+  { href: '/calls', label: 'Ligações', icon: Phone },
   { href: '/groups', label: 'Grupos', icon: Users },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ]

@@ -154,3 +154,16 @@ export interface ConversationMessage {
   sender_phone?: string | null
   sender_name?: string | null
 }
+
+export interface CallLogEntry {
+  id: number
+  conversation_id: number
+  contact_phone: string
+  contact_name: string | null
+  direction: 'inbound' | 'outbound'
+  content: string | null
+  timestamp: string
+  call_outcome: string | null
+  call_duration_secs: number | null
+  is_video_call: boolean | null
+}

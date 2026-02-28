@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from app.models.conversation import Conversation, ConversationStatus
-from app.models.message import Message, MessageDirection
+from app.models.message import Message, MessageDirection, MessageType
 from app.models.attendant import Attendant
 from app.models.instance import Instance
 from app.schemas.metrics import (
@@ -570,6 +570,44 @@ def get_conversation_messages(db: Session, conversation_id: int):
             "sender_name": m.sender_name,
         }
         for m in messages
+    ]
+
+
+def get_calls(
+    db: Session,
+    instance_id: Optional[int] = None,
+    limit: int = 50,
+    direction: Optional[str] = None,
+) -> List[dict]:
+    query = (
+        db.query(Message, Conversation)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(
+            Message.msg_type == MessageType.call,
+            Message.is_deleted == False,
+            Conversation.is_group == False,
+        )
+    )
+    if instance_id:
+        query = query.filter(Conversation.instance_id == instance_id)
+    if direction:
+        query = query.filter(Message.direction == direction)
+
+    rows = query.order_by(Message.timestamp.desc()).limit(limit).all()
+    return [
+        {
+            "id": m.id,
+            "conversation_id": m.conversation_id,
+            "contact_phone": c.contact_phone,
+            "contact_name": c.contact_name,
+            "direction": m.direction.value,
+            "content": m.content,
+            "timestamp": m.timestamp.isoformat(),
+            "call_outcome": m.call_outcome,
+            "call_duration_secs": m.call_duration_secs,
+            "is_video_call": m.is_video_call,
+        }
+        for m, c in rows
     ]
 
 
