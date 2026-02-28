@@ -356,6 +356,62 @@ def get_analysis_stats(db: Session, instance_id: Optional[int] = None) -> Analys
     )
 
 
+def sync_group_names(db: Session, instance_id: int) -> dict:
+    """Busca todos os grupos da Evolution API e atualiza os nomes no banco."""
+    import httpx
+    import logging
+    logger = logging.getLogger(__name__)
+
+    instance = db.query(Instance).filter(Instance.id == instance_id).first()
+    if not instance:
+        return {"updated": 0, "error": "Instância não encontrada"}
+
+    url = f"{instance.api_url.rstrip('/')}/group/fetchAllGroups/{instance.instance_name}?getParticipants=false"
+    logger.info(f"Sync grupos: GET {url}")
+
+    try:
+        resp = httpx.get(url, headers={"apikey": instance.api_key}, timeout=15)
+        logger.info(f"Sync grupos: status={resp.status_code} body={resp.text[:300]}")
+        resp.raise_for_status()
+        groups_data = resp.json()
+    except httpx.HTTPStatusError as e:
+        return {"updated": 0, "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"updated": 0, "error": str(e)}
+
+    # A API pode retornar lista diretamente ou dentro de uma chave
+    if isinstance(groups_data, dict):
+        groups_data = groups_data.get("groups") or groups_data.get("data") or []
+
+    if not isinstance(groups_data, list):
+        return {"updated": 0, "error": f"Resposta inesperada: {str(groups_data)[:200]}"}
+
+    updated = 0
+    for group in groups_data:
+        group_id = group.get("id", "")
+        subject = group.get("subject") or group.get("name")
+        if not group_id or not subject:
+            continue
+
+        contact_phone = group_id.split("@")[0].split(":")[0]
+        conv = (
+            db.query(Conversation)
+            .filter(
+                Conversation.contact_phone == contact_phone,
+                Conversation.instance_id == instance.id,
+                Conversation.is_group == True,
+            )
+            .first()
+        )
+        if conv:
+            conv.contact_name = subject
+            updated += 1
+
+    db.commit()
+    logger.info(f"Sync grupos: {updated} atualizado(s) de {len(groups_data)} grupo(s) na API")
+    return {"updated": updated, "total_api": len(groups_data)}
+
+
 def format_response_time(seconds: Optional[float]) -> str:
     if seconds is None:
         return "—"

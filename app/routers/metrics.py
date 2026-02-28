@@ -85,6 +85,11 @@ def analysis_stats(instance_id: Optional[int] = None, db: Session = Depends(get_
     return metrics_service.get_analysis_stats(db, instance_id)
 
 
+@router.post("/groups/sync-names")
+def sync_group_names(instance_id: int, db: Session = Depends(get_db)):
+    return metrics_service.sync_group_names(db, instance_id)
+
+
 @router.get("/groups")
 def list_groups(
     instance_id: Optional[int] = None,
