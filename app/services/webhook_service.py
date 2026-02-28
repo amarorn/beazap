@@ -161,6 +161,35 @@ def process_message_upsert(db: Session, instance_name: str, data: Any):
     db.commit()
 
 
+def process_groups_upsert(db: Session, instance_name: str, data: Any):
+    """Trata eventos groups.upsert e groups.update — salva/atualiza o nome do grupo."""
+    instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
+    if not instance:
+        return
+
+    groups_data = data if isinstance(data, list) else [data]
+    for group_data in groups_data:
+        group_id = group_data.get("id", "")
+        subject = group_data.get("subject") or group_data.get("name")
+        if not group_id or not subject:
+            continue
+
+        contact_phone = _normalize_phone(group_id)
+        conv = (
+            db.query(Conversation)
+            .filter(
+                Conversation.contact_phone == contact_phone,
+                Conversation.instance_id == instance.id,
+                Conversation.is_group == True,
+            )
+            .first()
+        )
+        if conv:
+            conv.contact_name = subject
+
+    db.commit()
+
+
 def process_message_update(db: Session, instance_name: str, data: Any):
     updates = data if isinstance(data, list) else [data]
     for update in updates:
