@@ -150,9 +150,7 @@ export default function CallsPage() {
                     <span className="text-zinc-600 dark:text-zinc-400">
                       {call.content || call.call_outcome || '-'}
                     </span>
-                    {call.is_video_call && (
-                      <Video className="w-3.5 h-3.5 inline ml-1 text-zinc-500" title="Vídeo" />
-                    )}
+                    {call.is_video_call && <Video className="w-3.5 h-3.5 inline ml-1 text-zinc-500" />}
                   </td>
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400 font-mono text-xs">
                     {formatDuration(call.call_duration_secs)}
