@@ -11,6 +11,7 @@ import type {
   HourlyVolume,
   ConversationDetail,
   ConversationMessage,
+  CallLogEntry,
   AnalysisStats,
   GroupOverviewMetrics,
   Instance,
@@ -110,6 +111,9 @@ export const metricsApi = {
 
   getGroupMessages: (id: number) =>
     api.get<ConversationMessage[]>(`/api/metrics/groups/${id}/messages`).then(r => r.data),
+
+  getCalls: (params?: { instance_id?: number; limit?: number; direction?: string }) =>
+    api.get<CallLogEntry[]>('/api/metrics/calls', { params }).then(r => r.data),
 }
 
 export const instancesApi = {

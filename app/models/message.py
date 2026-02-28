@@ -18,6 +18,7 @@ class MessageType(str, enum.Enum):
     document = "document"
     sticker = "sticker"
     location = "location"
+    call = "call"
     other = "other"
 
 
@@ -38,5 +39,10 @@ class Message(Base):
     # Para mensagens de grupo: quem enviou
     sender_phone = Column(String(30), nullable=True)
     sender_name = Column(String(150), nullable=True)
+
+    # Para mensagens de ligação (callLogMessage)
+    call_outcome = Column(String(50), nullable=True)
+    call_duration_secs = Column(Integer, nullable=True)
+    is_video_call = Column(Boolean, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")

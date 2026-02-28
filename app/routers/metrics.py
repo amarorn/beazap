@@ -173,3 +173,13 @@ def update_group_config(
 @router.get("/groups/{conversation_id}/messages")
 def get_group_messages(conversation_id: int, db: Session = Depends(get_db)):
     return metrics_service.get_conversation_messages(db, conversation_id)
+
+
+@router.get("/calls")
+def list_calls(
+    instance_id: Optional[int] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    direction: Optional[str] = Query(default=None, description="inbound ou outbound"),
+    db: Session = Depends(get_db),
+):
+    return metrics_service.get_calls(db, instance_id, limit, direction)
