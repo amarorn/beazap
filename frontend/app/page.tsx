@@ -7,6 +7,7 @@ import { useInstance } from '@/lib/instance-context'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { VolumeChart } from '@/components/dashboard/VolumeChart'
 import { PeakHoursChart } from '@/components/dashboard/PeakHoursChart'
+import { ExtendedMetricsCharts } from '@/components/dashboard/ExtendedMetricsCharts'
 import { SlaChart } from '@/components/dashboard/SlaChart'
 import { StatusChart } from '@/components/dashboard/StatusChart'
 import { StatusDonut } from '@/components/dashboard/StatusDonut'
@@ -64,6 +65,16 @@ export default function DashboardPage() {
     queryFn: () => metricsApi.getGroupOverview(selectedInstanceId),
   })
 
+  const { data: extendedMetrics } = useQuery({
+    queryKey: ['extended-metrics', selectedInstanceId],
+    queryFn: () => metricsApi.getExtendedMetrics(selectedInstanceId),
+  })
+
+  const { data: dailyExtendedMetrics = [] } = useQuery({
+    queryKey: ['daily-extended-metrics', selectedInstanceId],
+    queryFn: () => metricsApi.getDailyExtendedMetrics(7, selectedInstanceId),
+  })
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -102,6 +113,51 @@ export default function DashboardPage() {
             accent="green"
             change={comparison.change_resolution_rate}
           />
+        </div>
+      )}
+
+      {extendedMetrics && (
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Métricas de Atendimento</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+            <KpiCard
+              label="T.M. Resolução"
+              value={formatResponseTime(extendedMetrics.avg_resolution_time_seconds)}
+              sub="Abertura até conclusão"
+              accent="blue"
+            />
+            <KpiCard
+              label="Taxa Abandono"
+              value={`${extendedMetrics.abandonment_rate}%`}
+              sub="Conversas abandonadas"
+              accent="red"
+            />
+            <KpiCard
+              label="SLA 5 min"
+              value={`${extendedMetrics.sla_5min_rate}%`}
+              sub="1ª resposta em até 5 min"
+              accent="green"
+            />
+            <KpiCard
+              label="SLA 15 min"
+              value={`${extendedMetrics.sla_15min_rate}%`}
+              sub="1ª resposta em até 15 min"
+              accent="green"
+            />
+            <KpiCard
+              label="SLA 30 min"
+              value={`${extendedMetrics.sla_30min_rate}%`}
+              sub="1ª resposta em até 30 min"
+              accent="green"
+            />
+            <KpiCard
+              label="Sem Resposta"
+              value={extendedMetrics.conversations_no_response_4h}
+              sub={`${extendedMetrics.conversations_no_response_1h} há 1h+`}
+              accent={extendedMetrics.conversations_no_response_4h > 0 ? 'red' : 'green'}
+            />
+          </div>
+          <ExtendedMetricsCharts data={dailyExtendedMetrics} />
         </div>
       )}
 
