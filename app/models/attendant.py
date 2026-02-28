@@ -24,4 +24,9 @@ class Attendant(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     instance = relationship("Instance", back_populates="attendants")
-    conversations = relationship("Conversation", back_populates="attendant")
+    conversations = relationship(
+        "Conversation",
+        foreign_keys="Conversation.attendant_id",
+        back_populates="attendant",
+        overlaps="group_manager,responsible",
+    )

@@ -37,6 +37,8 @@ def run_migrations():
         "ALTER TABLE conversations ADD COLUMN analysis_satisfaction INTEGER",
         "ALTER TABLE conversations ADD COLUMN analysis_summary TEXT",
         "ALTER TABLE conversations ADD COLUMN analysis_analyzed_at DATETIME",
+        "ALTER TABLE conversations ADD COLUMN responsible_id INTEGER REFERENCES attendants(id)",
+        "ALTER TABLE conversations ADD COLUMN manager_id INTEGER REFERENCES attendants(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

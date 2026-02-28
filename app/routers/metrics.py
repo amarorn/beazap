@@ -1,9 +1,15 @@
 from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.services import metrics_service
 from app.services import analysis_service
+
+
+class GroupConfigUpdate(BaseModel):
+    responsible_id: Optional[int] = None
+    manager_id: Optional[int] = None
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -86,6 +92,18 @@ def list_groups(
     db: Session = Depends(get_db),
 ):
     return metrics_service.get_group_conversations(db, instance_id, limit)
+
+
+@router.patch("/groups/{group_id}/config")
+def update_group_config(
+    group_id: int,
+    body: GroupConfigUpdate,
+    db: Session = Depends(get_db),
+):
+    ok = metrics_service.update_group_config(db, group_id, body.responsible_id, body.manager_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Grupo não encontrado")
+    return {"status": "updated"}
 
 
 @router.get("/groups/{conversation_id}/messages")
