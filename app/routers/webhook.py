@@ -24,5 +24,7 @@ async def receive_webhook(
         webhook_service.process_message_upsert(db, instance_name, body.get("data"))
     elif event == "messages.update":
         webhook_service.process_message_update(db, instance_name, body.get("data"))
+    elif event in ("groups.upsert", "groups.update"):
+        webhook_service.process_groups_upsert(db, instance_name, body.get("data"))
 
     return {"status": "ok", "event": event}
