@@ -59,7 +59,7 @@ export const metricsApi = {
     api.patch(`/api/metrics/groups/${id}/config`, data).then(r => r.data),
 
   syncGroupNames: (instanceId: number) =>
-    api.post<{ updated: number }>('/api/metrics/groups/sync-names', null, {
+    api.post<{ updated: number; total_api?: number; error?: string }>('/api/metrics/groups/sync-names', null, {
       params: { instance_id: instanceId },
     }).then(r => r.data),
 

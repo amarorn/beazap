@@ -166,7 +166,15 @@ export default function GroupsPage() {
     mutationFn: () => metricsApi.syncGroupNames(selectedInstanceId!),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-      alert(`${data.updated} grupo(s) atualizado(s)`)
+      if (data.error) {
+        alert(`Erro ao sincronizar: ${data.error}`)
+      } else {
+        alert(`${data.updated} grupo(s) atualizado(s) de ${data.total_api ?? '?'} encontrado(s) na API`)
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? String(err)
+      alert(`Erro: ${msg}`)
     },
   })
 
