@@ -530,6 +530,8 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         analysis_satisfaction=c.analysis_satisfaction,
         analysis_summary=c.analysis_summary,
         analysis_analyzed_at=c.analysis_analyzed_at,
+        team_id=c.team_id,
+        team_name=c.team.name if c.team else None,
         responsible_id=c.responsible_id,
         responsible_name=c.responsible.name if c.responsible else None,
         manager_id=c.manager_id,
@@ -920,3 +922,183 @@ def assign_conversation(
     conv.attendant_id = attendant_id
     db.commit()
     return True
+
+
+async def send_message_to_conversation(db: Session, conversation_id: int, text: str) -> dict:
+    """Envia mensagem de texto via Evolution API e salva no banco local."""
+    import httpx
+    import uuid
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    conv = db.query(Conversation).options(
+        __import__('sqlalchemy.orm', fromlist=['joinedload']).joinedload(Conversation.instance)
+    ).filter(Conversation.id == conversation_id).first()
+
+    if not conv:
+        return {"error": "Conversa não encontrada"}
+
+    instance = conv.instance
+    if not instance or not instance.api_url or not instance.api_key:
+        return {"error": "Instância sem configuração de API válida"}
+
+    phone_raw = (conv.contact_phone or "").split("@")[0].split(":")[0]
+    if not phone_raw:
+        return {"error": "Número do contato inválido"}
+    suffix = "@g.us" if conv.is_group else "@s.whatsapp.net"
+    phone_jid = f"{phone_raw}{suffix}"
+
+    url = f"{instance.api_url.rstrip('/')}/message/sendText/{instance.instance_name}"
+    headers = {"apikey": instance.api_key, "Content-Type": "application/json"}
+    payload = {"number": phone_jid, "text": text}
+    logger.info("send_message: url=%s payload=%s", url, payload)
+
+    data = None
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code in (200, 201):
+                data = resp.json()
+            else:
+                try:
+                    body = resp.json()
+                except Exception:
+                    body = {}
+
+                body_dict = body if isinstance(body, dict) else {}
+                resp_data = body_dict.get("response")
+                resp_data = resp_data if isinstance(resp_data, dict) else {}
+                msg_list = resp_data.get("message", [])
+                if not isinstance(msg_list, list):
+                    msg_list = []
+
+                exists_false = (
+                    msg_list
+                    and isinstance(msg_list[0], dict)
+                    and msg_list[0].get("exists") is False
+                )
+                if exists_false:
+                    return {
+                        "error": (
+                            "O WhatsApp não conseguiu localizar este contato. "
+                            "Verifique se a instância está conectada (Settings → Instâncias) "
+                            "e tente novamente."
+                        )
+                    }
+
+                # Detecta instância desconectada do WhatsApp
+                resp_msg = resp_data.get("message", "")
+                if isinstance(resp_msg, str) and "connection closed" in resp_msg.lower():
+                    return {
+                        "error": (
+                            "A instância WhatsApp está desconectada. "
+                            "Acesse Configurações → Instâncias, reconecte o QR Code e tente novamente."
+                        )
+                    }
+
+                logger.warning("send_message Evolution API error: %s %s", resp.status_code, body)
+                return {"error": f"Evolution API retornou erro {resp.status_code}: {body}"}
+
+    except httpx.ConnectError:
+        return {"error": "Não foi possível conectar à Evolution API. Verifique a URL da instância."}
+    except httpx.ReadTimeout:
+        return {"error": "A Evolution API demorou para responder. Tente novamente."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    # Salva a mensagem enviada no banco local
+    # Evolution API pode retornar dict ou list; extrai key.id
+    payload = data[0] if isinstance(data, list) and data else data
+    evo_id = None
+    if isinstance(payload, dict):
+        key = payload.get("key") or {}
+        evo_id = key.get("id") if isinstance(key, dict) else None
+    if not evo_id:
+        evo_id = f"sent_{uuid.uuid4().hex}"
+        logger.warning("send_message: Evolution API não retornou key.id — usando ID local %s", evo_id)
+    now = datetime.utcnow()
+    msg = Message(
+        evolution_id=evo_id,
+        conversation_id=conversation_id,
+        direction=MessageDirection.outbound,
+        msg_type=MessageType.text,
+        content=text,
+        timestamp=now,
+    )
+    db.add(msg)
+    conv.outbound_count = (conv.outbound_count or 0) + 1
+    conv.last_message_at = now
+    db.commit()
+    db.refresh(msg)
+
+    return {
+        "id": msg.id,
+        "content": text,
+        "direction": "outbound",
+        "msg_type": "text",
+        "timestamp": now.isoformat(),
+    }
+
+
+def get_team_metrics(
+    db: Session,
+    instance_id: Optional[int] = None,
+) -> List[dict]:
+    from app.models.team import Team
+    from app.schemas.metrics import TeamMetrics
+
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    teams_q = db.query(Team).filter(Team.active == True)
+    if instance_id:
+        teams_q = teams_q.filter(Team.instance_id == instance_id)
+    teams = teams_q.order_by(Team.name).all()
+
+    result = []
+    for team in teams:
+        base = db.query(Conversation).filter(Conversation.team_id == team.id)
+        total = base.count()
+        open_c = base.filter(Conversation.status == ConversationStatus.open).count()
+        resolved_c = base.filter(Conversation.status == ConversationStatus.resolved).count()
+        abandoned_c = base.filter(Conversation.status == ConversationStatus.abandoned).count()
+        today_c = base.filter(Conversation.opened_at >= today).count()
+        waiting_c = base.filter(
+            Conversation.status == ConversationStatus.open,
+            Conversation.first_response_at == None,  # noqa: E711
+        ).count()
+
+        avg_resp = db.query(func.avg(Conversation.first_response_time_seconds)).filter(
+            Conversation.team_id == team.id,
+            Conversation.first_response_time_seconds != None,  # noqa: E711
+        ).scalar()
+
+        msg_recv = (
+            db.query(func.count(Message.id))
+            .join(Conversation)
+            .filter(
+                Conversation.team_id == team.id,
+                Message.direction == MessageDirection.inbound,
+            )
+            .scalar() or 0
+        )
+
+        resolution_rate = (resolved_c / total * 100) if total > 0 else 0.0
+
+        result.append(TeamMetrics(
+            team_id=team.id,
+            team_name=team.name,
+            instance_id=team.instance_id,
+            total_conversations=total,
+            open_conversations=open_c,
+            resolved_conversations=resolved_c,
+            abandoned_conversations=abandoned_c,
+            waiting_for_response=waiting_c,
+            conversations_today=today_c,
+            avg_first_response_seconds=avg_resp,
+            resolution_rate=round(resolution_rate, 1),
+            total_messages_received=msg_recv,
+        ))
+
+    return result

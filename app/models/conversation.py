@@ -42,6 +42,9 @@ class Conversation(Base):
     manager_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)
     group_tags = Column(String(200), nullable=True)
 
+    # Equipe de triagem
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+
     # Análise LLM
     analysis_category = Column(String(30), nullable=True)    # reclamacao, problema_tecnico, nova_contratacao, suporte, elogio, informacao, outro
     analysis_sentiment = Column(String(20), nullable=True)   # positivo, neutro, negativo
@@ -49,6 +52,7 @@ class Conversation(Base):
     analysis_summary = Column(Text, nullable=True)
     analysis_analyzed_at = Column(DateTime, nullable=True)
 
+    team = relationship("Team", back_populates="conversations")
     attendant = relationship(
         "Attendant",
         foreign_keys=[attendant_id],
@@ -67,3 +71,4 @@ class Conversation(Base):
     )
     instance = relationship("Instance", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", order_by="Message.timestamp")
+    notes = relationship("ConversationNote", back_populates="conversation", order_by="ConversationNote.created_at", cascade="all, delete-orphan")

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users, Phone } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users, Phone, UsersRound, UserCheck, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { metricsApi } from '@/lib/api'
 import type { Instance } from '@/types'
@@ -21,12 +21,20 @@ const navItems = [
   { href: '/conversations', label: 'Atendimentos', icon: MessageSquare },
   { href: '/calls', label: 'Ligações', icon: Phone },
   { href: '/groups', label: 'Grupos', icon: Users },
+  { href: '/teams', label: 'Equipes', icon: UsersRound },
+  { href: '/attendants', label: 'Atendentes', icon: UserCheck },
+  { href: '/reports', label: 'Relatórios', icon: BarChart3 },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ]
 
 export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: SidebarProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const [slaThreshold, setSlaThreshold] = useState(30)
   useEffect(() => {
@@ -140,10 +148,13 @@ export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: Sid
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.08] transition-all text-xs"
             title="Alternar tema"
           >
-            {theme === 'dark'
-              ? <><Sun className="w-3.5 h-3.5" /><span>Claro</span></>
-              : <><Moon className="w-3.5 h-3.5" /><span>Escuro</span></>
-            }
+            {!mounted ? (
+              <span className="w-[52px] h-4" />
+            ) : theme === 'dark' ? (
+              <><Sun className="w-3.5 h-3.5" /><span>Claro</span></>
+            ) : (
+              <><Moon className="w-3.5 h-3.5" /><span>Escuro</span></>
+            )}
           </button>
         </div>
       </div>

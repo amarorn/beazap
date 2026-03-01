@@ -1,3 +1,28 @@
+export interface Team {
+  id: number
+  name: string
+  description: string | null
+  keywords: string | null
+  instance_id: number
+  active: boolean
+  created_at: string
+}
+
+export interface TeamMetrics {
+  team_id: number
+  team_name: string
+  instance_id: number
+  total_conversations: number
+  open_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  waiting_for_response: number
+  conversations_today: number
+  avg_first_response_seconds: number | null
+  resolution_rate: number
+  total_messages_received: number
+}
+
 export interface Instance {
   id: number
   name: string
@@ -118,6 +143,9 @@ export interface ConversationDetail {
   first_response_time_seconds: number | null
   inbound_count: number
   outbound_count: number
+  // Equipe de triagem
+  team_id?: number | null
+  team_name?: string | null
   // Análise LLM
   analysis_category?: string | null
   analysis_sentiment?: string | null
@@ -170,6 +198,22 @@ export interface SlaAlertsResponse {
   threshold_minutes: number
 }
 
+export interface QuickReply {
+  id: number
+  title: string
+  text: string
+  active: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface ConversationNote {
+  id: number
+  author_name: string
+  content: string
+  created_at: string
+}
+
 export interface CallLogEntry {
   id: number
   conversation_id: number
@@ -181,4 +225,27 @@ export interface CallLogEntry {
   call_outcome: string | null
   call_duration_secs: number | null
   is_video_call: boolean | null
+}
+
+export interface AttendantSummary {
+  attendant_id: number
+  attendant_name: string
+  role: string | null
+  period_week: string
+  total_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  resolution_rate: number
+  avg_first_response_seconds: number | null
+  avg_resolution_seconds: number | null
+  total_messages_sent: number
+  total_messages_received: number
+  avg_satisfaction: number | null
+  sla_5min_rate: number
+  sla_15min_rate: number
+  sla_30min_rate: number
+  top_categories: Record<string, number>
+  top_sentiments: Record<string, number>
+  llm_summary: string | null
+  generated_at: string | null
 }

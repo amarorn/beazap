@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -15,6 +16,10 @@ class GroupConfigUpdate(BaseModel):
 
 class AssignBody(BaseModel):
     attendant_id: Optional[int] = None
+
+
+class SendMessageBody(BaseModel):
+    text: str
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -88,6 +93,11 @@ def daily_status(
     return metrics_service.get_daily_status(db, days, instance_id)
 
 
+@router.get("/teams")
+def team_metrics(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return metrics_service.get_team_metrics(db, instance_id)
+
+
 @router.get("/conversations")
 def conversations(
     limit: int = Query(default=20, ge=1, le=100),
@@ -132,6 +142,21 @@ def assign_conversation(
     if not ok:
         raise HTTPException(status_code=404, detail="Conversa ou atendente não encontrado")
     return {"status": "assigned"}
+
+
+@router.post("/conversations/{conversation_id}/send")
+async def send_message(
+    conversation_id: int,
+    body: SendMessageBody,
+    db: Session = Depends(get_db),
+):
+    if not body.text or not body.text.strip():
+        raise HTTPException(status_code=400, detail="Texto da mensagem não pode ser vazio")
+    result = await metrics_service.send_message_to_conversation(db, conversation_id, body.text.strip())
+    if "error" in result:
+        logging.getLogger(__name__).warning("send_message failed conv=%s: %s", conversation_id, result["error"])
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @router.post("/conversations/{conversation_id}/analyze")
@@ -208,3 +233,68 @@ def list_calls(
     db: Session = Depends(get_db),
 ):
     return metrics_service.get_calls(db, instance_id, limit, direction)
+
+
+# ─── Notes ────────────────────────────────────────────────────────────────────
+class NoteCreate(BaseModel):
+    content: str
+    author_name: Optional[str] = "Agente"
+
+
+@router.get("/conversations/{conversation_id}/notes")
+def get_notes(conversation_id: int, db: Session = Depends(get_db)):
+    from app.models.conversation_note import ConversationNote
+    notes = (
+        db.query(ConversationNote)
+        .filter(ConversationNote.conversation_id == conversation_id)
+        .order_by(ConversationNote.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": n.id,
+            "author_name": n.author_name,
+            "content": n.content,
+            "created_at": n.created_at.isoformat(),
+        }
+        for n in notes
+    ]
+
+
+@router.post("/conversations/{conversation_id}/notes")
+def add_note(conversation_id: int, body: NoteCreate, db: Session = Depends(get_db)):
+    from app.models.conversation import Conversation
+    from app.models.conversation_note import ConversationNote
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    if not body.content or not body.content.strip():
+        raise HTTPException(status_code=400, detail="Conteúdo não pode ser vazio")
+    note = ConversationNote(
+        conversation_id=conversation_id,
+        author_name=(body.author_name or "Agente").strip(),
+        content=body.content.strip(),
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return {
+        "id": note.id,
+        "author_name": note.author_name,
+        "content": note.content,
+        "created_at": note.created_at.isoformat(),
+    }
+
+
+@router.delete("/conversations/{conversation_id}/notes/{note_id}")
+def delete_note(conversation_id: int, note_id: int, db: Session = Depends(get_db)):
+    from app.models.conversation_note import ConversationNote
+    note = db.query(ConversationNote).filter(
+        ConversationNote.id == note_id,
+        ConversationNote.conversation_id == conversation_id,
+    ).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Nota não encontrada")
+    db.delete(note)
+    db.commit()
+    return {"status": "deleted"}

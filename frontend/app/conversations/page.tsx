@@ -137,6 +137,11 @@ export default function ConversationsPage() {
                     <td className="px-5 py-3">
                       <p className="font-medium text-zinc-900 dark:text-zinc-100">{conv.contact_name || '—'}</p>
                       <p className="text-xs text-zinc-400 dark:text-zinc-500">{conv.contact_phone}</p>
+                      {conv.team_name && (
+                        <span className="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+                          {conv.team_name}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       {conv.status === 'open' ? (

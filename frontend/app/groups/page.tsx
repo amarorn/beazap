@@ -318,30 +318,29 @@ export default function GroupsPage() {
 
       <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/80">
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Grupo</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap hidden md:table-cell">ID</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Tags</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Responsável</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Gerente</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap hidden sm:table-cell">1ª msg</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap">Msgs</th>
-                <th className="text-left px-4 py-3 text-zinc-500 dark:text-zinc-400 font-semibold whitespace-nowrap w-24"></th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap">Grupo</th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap">Tags</th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap">Responsável</th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap">Gerente</th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap hidden lg:table-cell">1ª msg</th>
+                <th className="text-left px-3 py-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide whitespace-nowrap">Msgs</th>
+                <th className="px-3 py-3 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={7} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
                     Carregando...
                   </td>
                 </tr>
               )}
               {!isLoading && groups.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={7} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
                     Nenhum grupo encontrado. Envie uma mensagem em um grupo onde o WhatsApp está conectado.
                   </td>
                 </tr>

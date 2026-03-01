@@ -110,6 +110,10 @@ class ConversationDetail(BaseModel):
     analysis_summary: Optional[str] = None
     analysis_analyzed_at: Optional[datetime] = None
 
+    # Equipe de triagem
+    team_id: Optional[int] = None
+    team_name: Optional[str] = None
+
     # Vínculos de grupo
     responsible_id: Optional[int] = None
     responsible_name: Optional[str] = None
@@ -134,6 +138,21 @@ class AnalysisStats(BaseModel):
     sentiments: dict
 
 
+class TeamMetrics(BaseModel):
+    team_id: int
+    team_name: str
+    instance_id: int
+    total_conversations: int
+    open_conversations: int
+    resolved_conversations: int
+    abandoned_conversations: int
+    waiting_for_response: int
+    conversations_today: int
+    avg_first_response_seconds: Optional[float]
+    resolution_rate: float
+    total_messages_received: int
+
+
 class InstanceCreate(BaseModel):
     name: str
     instance_name: str
@@ -148,3 +167,10 @@ class AttendantCreate(BaseModel):
     email: Optional[str] = None
     role: str = "agent"
     instance_id: int
+
+
+class AttendantUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None

@@ -5,10 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Sidebar } from './Sidebar'
 import { instancesApi } from '@/lib/api'
 import { useInstance } from '@/lib/instance-context'
+import { useSseEvents } from '@/lib/use-sse'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { selectedInstanceId, setSelectedInstanceId } = useInstance()
   const initialized = useRef(false)
+
+  useSseEvents()
 
   const { data: instances = [] } = useQuery({
     queryKey: ['instances'],

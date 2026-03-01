@@ -2,12 +2,93 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { instancesApi, attendantsApi } from '@/lib/api'
+import { instancesApi, attendantsApi, quickRepliesApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Trash2, Plus, Bell } from 'lucide-react'
+import { Trash2, Plus, Bell, Zap, GripVertical, RefreshCw, Wifi, WifiOff, AlertCircle } from 'lucide-react'
+import type { Instance } from '@/types'
+
+function InstanceStatusBadge({ state, error }: { state: string; error?: string }) {
+  if (state === 'open') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+      <Wifi className="w-3 h-3" /> Conectado
+    </span>
+  )
+  if (state === 'connecting') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-semibold animate-pulse">
+      <RefreshCw className="w-3 h-3" /> Conectando…
+    </span>
+  )
+  if (state === 'close' || state === 'closed') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[11px] font-semibold">
+      <WifiOff className="w-3 h-3" /> Desconectado
+    </span>
+  )
+  if (state === 'unreachable') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[11px] font-semibold" title={error}>
+      <AlertCircle className="w-3 h-3" /> Inacessível
+    </span>
+  )
+  return null
+}
+
+function InstanceCard({ inst, onDelete }: { inst: Instance; onDelete: () => void }) {
+  const [checking, setChecking] = useState(false)
+  const [status, setStatus] = useState<{ state: string; error?: string; api_url?: string } | null>(null)
+
+  async function checkStatus() {
+    setChecking(true)
+    try {
+      const result = await instancesApi.checkStatus(inst.id)
+      setStatus(result)
+    } catch {
+      setStatus({ state: 'error', error: 'Falha ao verificar' })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <div className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{inst.name}</p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{inst.instance_name}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {status && <InstanceStatusBadge state={status.state} error={status.error} />}
+          <button
+            onClick={checkStatus}
+            disabled={checking}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            title="Verificar conexão"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            title="Remover instância"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+      {status?.error && status.state !== 'open' && (
+        <p className="text-[11px] text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-lg px-2.5 py-1.5">
+          {status.error}
+        </p>
+      )}
+      {status?.api_url && (
+        <p className="text-[11px] text-zinc-400 dark:text-zinc-600 font-mono truncate">
+          {status.api_url}
+        </p>
+      )}
+    </div>
+  )
+}
 
 const SLA_THRESHOLD_OPTIONS = [
   { value: 15, label: '15 minutos' },
@@ -78,6 +159,34 @@ export default function SettingsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendants-list'] }),
   })
 
+  // Quick replies
+  const { data: quickReplies = [] } = useQuery({
+    queryKey: ['quick-replies'],
+    queryFn: quickRepliesApi.list,
+  })
+  const [qrForm, setQrForm] = useState({ title: '', text: '' })
+  const [editingQr, setEditingQr] = useState<{ id: number; title: string; text: string } | null>(null)
+
+  const createQr = useMutation({
+    mutationFn: quickRepliesApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quick-replies'] })
+      setQrForm({ title: '', text: '' })
+    },
+  })
+  const updateQr = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { title?: string; text?: string } }) =>
+      quickRepliesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quick-replies'] })
+      setEditingQr(null)
+    },
+  })
+  const deleteQr = useMutation({
+    mutationFn: quickRepliesApi.delete,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quick-replies'] }),
+  })
+
   const inputClass = "w-full text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
 
   return (
@@ -96,21 +205,11 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {instances.map(inst => (
-              <div key={inst.id} className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{inst.name}</p>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500">{inst.instance_name}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-                  <button
-                    onClick={() => deleteInstance.mutate(inst.id)}
-                    className="text-zinc-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+              <InstanceCard
+                key={inst.id}
+                inst={inst}
+                onDelete={() => deleteInstance.mutate(inst.id)}
+              />
             ))}
 
             <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2.5">
@@ -245,6 +344,110 @@ export default function SettingsPage() {
         </Card>
       </div>
 
+      {/* Quick Replies */}
+      <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base dark:text-zinc-100 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-emerald-500" />
+            Templates de Resposta Rápida
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {quickReplies.length === 0 && (
+            <p className="text-sm text-zinc-400 dark:text-zinc-500 text-center py-2">Nenhum template cadastrado.</p>
+          )}
+          {quickReplies.map(qr => (
+            <div key={qr.id} className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-1">
+              {editingQr?.id === qr.id ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editingQr.title}
+                    onChange={e => setEditingQr(q => q ? { ...q, title: e.target.value } : q)}
+                    className={inputClass}
+                    placeholder="Título"
+                  />
+                  <textarea
+                    value={editingQr.text}
+                    onChange={e => setEditingQr(q => q ? { ...q, text: e.target.value } : q)}
+                    className={`${inputClass} resize-none`}
+                    rows={3}
+                    placeholder="Texto do template"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => updateQr.mutate({ id: qr.id, data: { title: editingQr.title, text: editingQr.text } })}
+                      disabled={updateQr.isPending || !editingQr.title.trim() || !editingQr.text.trim()}
+                    >
+                      Salvar
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingQr(null)}>Cancelar</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <GripVertical className="w-4 h-4 text-zinc-300 dark:text-zinc-600 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                        <Zap className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                        {qr.title}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{qr.text}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setEditingQr({ id: qr.id, title: qr.title, text: qr.text })}
+                      className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors p-1"
+                      title="Editar"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => deleteQr.mutate(qr.id)}
+                      className="text-zinc-400 hover:text-red-500 transition-colors p-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2.5">
+            <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Novo Template</p>
+            <input
+              type="text"
+              placeholder="Título (ex: Saudação inicial)"
+              value={qrForm.title}
+              onChange={e => setQrForm(f => ({ ...f, title: e.target.value }))}
+              className={inputClass}
+            />
+            <textarea
+              placeholder="Texto da resposta rápida..."
+              value={qrForm.text}
+              onChange={e => setQrForm(f => ({ ...f, text: e.target.value }))}
+              rows={3}
+              className={`${inputClass} resize-none`}
+            />
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => createQr.mutate({ title: qrForm.title.trim(), text: qrForm.text.trim() })}
+              disabled={createQr.isPending || !qrForm.title.trim() || !qrForm.text.trim()}
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Adicionar Template
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* SLA Alert Settings */}
       <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
         <CardHeader className="pb-3">
@@ -290,9 +493,20 @@ export default function SettingsPage() {
           <code className="block bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-900/40 rounded-lg px-4 py-3 text-sm text-zinc-800 dark:text-zinc-200 font-mono">
             POST http://SEU_IP:8000/webhook/&#123;instance_name&#125;
           </code>
-          <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-            Eventos obrigatórios: <strong>messages.upsert</strong>, <strong>messages.update</strong>
-          </p>
+          <div className="mt-3 space-y-1">
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">Eventos obrigatórios:</p>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'GROUPS_UPSERT', 'GROUPS_UPDATE', 'CALL'].map(ev => (
+                <span key={ev} className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-[11px] font-mono font-medium">
+                  {ev}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-blue-500 dark:text-blue-500 mt-2">
+              Ative todos em <strong>Configurações → Webhook</strong> na Evolution API.
+              Sem <strong>MESSAGES_UPSERT</strong> nenhuma conversa será capturada.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
