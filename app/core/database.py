@@ -58,6 +58,7 @@ def run_migrations():
         f"ALTER TABLE messages ADD COLUMN {if_not_exists} call_duration_secs INTEGER",
         f"ALTER TABLE messages ADD COLUMN {if_not_exists} is_video_call BOOLEAN",
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} team_id INTEGER REFERENCES teams(id)",
+        f"ALTER TABLE attendants ADD COLUMN {if_not_exists} team_id INTEGER REFERENCES teams(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

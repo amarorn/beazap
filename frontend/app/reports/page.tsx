@@ -1214,7 +1214,7 @@ function AiReportTab({ days, instanceId }: { days: number; instanceId?: number }
               ['atendente_raw', debugData.atendente_raw_count],
             ].map(([label, val]) => (
               <div key={String(label)} className="flex justify-between gap-2 py-0.5 border-b border-zinc-100 dark:border-white/[0.04]">
-                <span className="text-zinc-500 dark:text-zinc-400 font-mono">{label}</span>
+                <span className="text-zinc-500 dark:text-zinc-400 font-mono">{String(label)}</span>
                 <span className={`font-semibold ${Number(val) === 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{String(val)}</span>
               </div>
             ))}

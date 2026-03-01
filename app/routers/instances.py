@@ -101,6 +101,7 @@ def create_attendant(payload: AttendantCreate, db: Session = Depends(get_db)):
         email=payload.email,
         role=role,
         instance_id=payload.instance_id,
+        team_id=payload.team_id,
     )
     db.add(attendant)
     db.commit()
@@ -124,6 +125,8 @@ def update_attendant(attendant_id: int, payload: AttendantUpdate, db: Session = 
         att.email = payload.email
     if payload.role is not None:
         att.role = AttendantRole(payload.role)
+    if payload.team_id is not None:
+        att.team_id = payload.team_id if payload.team_id != 0 else None
     db.commit()
     db.refresh(att)
     return att

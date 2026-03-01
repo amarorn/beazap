@@ -167,6 +167,7 @@ class AttendantCreate(BaseModel):
     email: Optional[str] = None
     role: str = "agent"
     instance_id: int
+    team_id: Optional[int] = None
 
 
 class AttendantUpdate(BaseModel):
@@ -174,3 +175,4 @@ class AttendantUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    team_id: Optional[int] = None

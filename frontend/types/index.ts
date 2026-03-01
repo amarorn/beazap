@@ -40,6 +40,7 @@ export interface Attendant {
   email: string | null
   role: 'manager' | 'agent'
   instance_id: number
+  team_id: number | null
   active: boolean
   created_at: string
 }

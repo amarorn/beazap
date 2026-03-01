@@ -161,9 +161,9 @@ export const attendantsApi = {
     api.get<Attendant[]>('/api/attendants', {
       params: instanceId ? { instance_id: instanceId } : {},
     }).then(r => r.data),
-  create: (data: { name: string; phone: string; email?: string; role: string; instance_id: number }) =>
+  create: (data: { name: string; phone: string; email?: string; role: string; instance_id: number; team_id?: number }) =>
     api.post<Attendant>('/api/attendants', data).then(r => r.data),
-  update: (id: number, data: { name?: string; phone?: string; email?: string; role?: string }) =>
+  update: (id: number, data: { name?: string; phone?: string; email?: string; role?: string; team_id?: number }) =>
     api.put<Attendant>(`/api/attendants/${id}`, data).then(r => r.data),
   delete: (id: number) => api.delete(`/api/attendants/${id}`).then(r => r.data),
 }

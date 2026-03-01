@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { instancesApi, teamsApi, metricsApi } from '@/lib/api'
+import { instancesApi, teamsApi, attendantsApi, metricsApi } from '@/lib/api'
 import { useInstance } from '@/lib/instance-context'
 import { formatResponseTime } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Trash2, Plus, Users, Sparkles, Clock, TrendingUp, AlertCircle } from 'lucide-react'
+import { Trash2, Plus, Users, Sparkles, Clock, TrendingUp, AlertCircle, UserCheck } from 'lucide-react'
 
 function MetricBox({
   label,
@@ -56,21 +56,39 @@ export default function TeamsPage() {
     refetchInterval: 30_000,
   })
 
+  const { data: allAttendants = [] } = useQuery({
+    queryKey: ['attendants-all'],
+    queryFn: () => attendantsApi.list(),
+  })
+
   const [selectedTeamInstance, setSelectedTeamInstance] = useState(
     selectedInstanceId ? String(selectedInstanceId) : ''
   )
   const [teamForm, setTeamForm] = useState({ name: '', description: '', keywords: '' })
+  const [selectedAttendantIds, setSelectedAttendantIds] = useState<number[]>([])
   const [showForm, setShowForm] = useState(false)
 
   const createTeam = useMutation({
     mutationFn: teamsApi.create,
-    onSuccess: () => {
+    onSuccess: async (newTeam) => {
+      // Link selected attendants to the new team
+      await Promise.all(
+        selectedAttendantIds.map(id => attendantsApi.update(id, { team_id: newTeam.id }))
+      )
       queryClient.invalidateQueries({ queryKey: ['teams-list'] })
       queryClient.invalidateQueries({ queryKey: ['team-metrics'] })
+      queryClient.invalidateQueries({ queryKey: ['attendants-all'] })
       setTeamForm({ name: '', description: '', keywords: '' })
+      setSelectedAttendantIds([])
       setShowForm(false)
     },
   })
+
+  function toggleAttendant(id: number) {
+    setSelectedAttendantIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
 
   const deleteTeam = useMutation({
     mutationFn: teamsApi.delete,
@@ -121,7 +139,10 @@ export default function TeamsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Select value={selectedTeamInstance} onValueChange={setSelectedTeamInstance}>
+              <Select
+                value={selectedTeamInstance}
+                onValueChange={v => { setSelectedTeamInstance(v); setSelectedAttendantIds([]) }}
+              >
                 <SelectTrigger className="text-sm h-9">
                   <SelectValue placeholder="Instância" />
                 </SelectTrigger>
@@ -153,6 +174,47 @@ export default function TeamsPage() {
                 className={inputClass}
               />
             </div>
+            {selectedTeamInstance && (() => {
+              const instanceAttendants = allAttendants.filter(
+                a => String(a.instance_id) === selectedTeamInstance
+              )
+              if (instanceAttendants.length === 0) return null
+              return (
+                <div className="col-span-full mt-1">
+                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    Vincular atendentes (opcional)
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {instanceAttendants.map(a => {
+                      const selected = selectedAttendantIds.includes(a.id)
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => toggleAttendant(a.id)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                            selected
+                              ? 'bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            selected ? 'bg-indigo-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'
+                          }`}>
+                            {a.name[0].toUpperCase()}
+                          </span>
+                          {a.name}
+                          {a.role === 'manager' && (
+                            <span className="text-[10px] text-purple-500 dark:text-purple-400">(G)</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
             <div className="flex gap-2 mt-3">
               <Button
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -231,6 +293,22 @@ export default function TeamsPage() {
                   ))}
                 </div>
               )}
+              {(() => {
+                const members = allAttendants.filter(a => a.team_id === team.id)
+                if (members.length === 0) return null
+                return (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {members.map(a => (
+                      <span key={a.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+                        <span className="w-3.5 h-3.5 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
+                          {a.name[0].toUpperCase()}
+                        </span>
+                        {a.name}
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
             </CardHeader>
 
             <CardContent>
