@@ -159,6 +159,17 @@ async def send_message(
     return result
 
 
+@router.get("/conversations/{conversation_id}/suggestions")
+def get_suggestions(
+    conversation_id: int,
+    company_tone: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    from app.services import suggestion_service
+    suggestions = suggestion_service.generate_suggestions(conversation_id, company_tone)
+    return {"suggestions": suggestions}
+
+
 @router.post("/conversations/{conversation_id}/analyze")
 def analyze_conversation(
     conversation_id: int,

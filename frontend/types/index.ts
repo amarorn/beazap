@@ -228,6 +228,49 @@ export interface CallLogEntry {
   is_video_call: boolean | null
 }
 
+export interface DatabricksConfig {
+  id: number
+  instance_id: number | null
+  workspace_url: string
+  api_token_masked: string
+  job_id: string
+  trigger_keyword: string
+  active: boolean
+  param_catalog: string
+  param_schema_name: string
+  param_modo: string
+  param_output_path: string
+  client_code_regex: string
+  client_code_min_length: number | null
+  client_code_max_length: number | null
+  send_error_reply: boolean
+  reply_example: string | null
+}
+
+export interface DatabricksValidation {
+  keyword_found: boolean
+  codigo_cliente: string | null
+  is_valid: boolean
+  error_reason: string | null
+  error_reply: string | null
+  notebook_params: Record<string, string> | null
+}
+
+export interface DatabricksJobRun {
+  id: number
+  config_id: number | null
+  databricks_run_id: string | null
+  triggered_by_phone: string | null
+  triggered_by_message: string | null
+  trigger_source: 'whatsapp' | 'manual'
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+  error_message: string | null
+  started_at: string
+  completed_at: string | null
+  extracted_codigo_cliente: string | null
+  notebook_params_json: string | null
+}
+
 export interface AttendantSummary {
   attendant_id: number
   attendant_name: string

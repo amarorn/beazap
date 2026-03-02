@@ -29,17 +29,18 @@ def get_db():
 def create_tables():
     from app.models import instance, attendant, conversation, message, team  # noqa
     from app.models import quick_reply, conversation_note, report  # noqa
+    from app.models import databricks  # noqa
     Base.metadata.create_all(bind=engine)
 
 
 def run_migrations():
     """Adiciona colunas novas sem apagar dados existentes.
 
-    Usa ADD COLUMN IF NOT EXISTS (PostgreSQL >= 9.6 e SQLite >= 3.35).
-    Para bancos mais antigos, o try/except garante compatibilidade.
+    PostgreSQL: usa IF NOT EXISTS nativamente.
+    SQLite: omite IF NOT EXISTS (não suportado); o try/except captura
+            "duplicate column name" quando a coluna já existe.
     """
-    # Sintaxe IF NOT EXISTS funciona no PostgreSQL e SQLite moderno
-    if_not_exists = "IF NOT EXISTS" if not _is_sqlite else "IF NOT EXISTS"
+    if_not_exists = "" if _is_sqlite else "IF NOT EXISTS"
 
     migrations = [
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} is_group BOOLEAN DEFAULT FALSE",
@@ -59,6 +60,19 @@ def run_migrations():
         f"ALTER TABLE messages ADD COLUMN {if_not_exists} is_video_call BOOLEAN",
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} team_id INTEGER REFERENCES teams(id)",
         f"ALTER TABLE attendants ADD COLUMN {if_not_exists} team_id INTEGER REFERENCES teams(id)",
+        # Databricks integration columns
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} param_catalog VARCHAR(100) DEFAULT 'nazaria_dev'",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} param_schema_name VARCHAR(100) DEFAULT 'nazaria_gold'",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} param_modo VARCHAR(50) DEFAULT 'cliente'",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} param_output_path VARCHAR(500) DEFAULT '/dbfs/FileStore/relatorios/relatorio.pdf'",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} client_code_regex VARCHAR(100) DEFAULT '\\d+'",
+        f"ALTER TABLE databricks_job_runs ADD COLUMN {if_not_exists} extracted_codigo_cliente VARCHAR(50)",
+        f"ALTER TABLE databricks_job_runs ADD COLUMN {if_not_exists} notebook_params_json TEXT",
+        # Validation + error reply columns
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} client_code_min_length INTEGER",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} client_code_max_length INTEGER",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} send_error_reply BOOLEAN DEFAULT TRUE",
+        f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} reply_example VARCHAR(300)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

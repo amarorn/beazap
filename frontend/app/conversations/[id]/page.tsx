@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   ArrowLeft, Phone, User, Clock, CheckCircle, Sparkles, Send, Lock,
-  CalendarDays, Users, Zap, StickyNote, Trash2, Plus,
+  CalendarDays, Users, Zap, StickyNote, Trash2, Plus, RotateCcw,
 } from 'lucide-react'
 import { AnalysisBadge } from '@/components/analysis/AnalysisBadge'
 

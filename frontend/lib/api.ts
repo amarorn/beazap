@@ -22,6 +22,9 @@ import type {
   QuickReply,
   ConversationNote,
   AttendantSummary,
+  DatabricksConfig,
+  DatabricksJobRun,
+  DatabricksValidation,
 } from '@/types'
 
 const api = axios.create({
@@ -145,6 +148,12 @@ export const metricsApi = {
     api.get<TeamMetrics[]>('/api/metrics/teams', {
       params: instanceId ? { instance_id: instanceId } : {},
     }).then(r => r.data),
+
+  getSuggestions: (conversationId: number, companyTone: string) =>
+    api.get<{ suggestions: string[] }>(
+      `/api/metrics/conversations/${conversationId}/suggestions`,
+      { params: { company_tone: companyTone } }
+    ).then(r => r.data.suggestions),
 }
 
 export const instancesApi = {
@@ -185,6 +194,40 @@ export const quickRepliesApi = {
   update: (id: number, data: { title?: string; text?: string; sort_order?: number; active?: boolean }) =>
     api.put<QuickReply>(`/api/quick-replies/${id}`, data).then(r => r.data),
   delete: (id: number) => api.delete(`/api/quick-replies/${id}`).then(r => r.data),
+}
+
+export const databricksApi = {
+  getConfig: () =>
+    api.get<DatabricksConfig | null>('/api/databricks/config').then(r => r.data),
+
+  saveConfig: (data: {
+    workspace_url: string
+    api_token: string
+    job_id: string
+    trigger_keyword: string
+    instance_id?: number | null
+    param_catalog?: string
+    param_schema_name?: string
+    param_modo?: string
+    param_output_path?: string
+    client_code_regex?: string
+    client_code_min_length?: number | null
+    client_code_max_length?: number | null
+    send_error_reply?: boolean
+    reply_example?: string | null
+  }) => api.post<DatabricksConfig>('/api/databricks/config', data).then(r => r.data),
+
+  validate: (message: string) =>
+    api.post<DatabricksValidation>('/api/databricks/validate', { message }).then(r => r.data),
+
+  trigger: (message: string, phone?: string) =>
+    api.post<DatabricksJobRun>('/api/databricks/trigger', { message, phone }).then(r => r.data),
+
+  getRuns: (limit = 50) =>
+    api.get<DatabricksJobRun[]>('/api/databricks/runs', { params: { limit } }).then(r => r.data),
+
+  refreshRun: (runId: number) =>
+    api.post<DatabricksJobRun>(`/api/databricks/runs/${runId}/refresh`).then(r => r.data),
 }
 
 export const reportsApi = {
