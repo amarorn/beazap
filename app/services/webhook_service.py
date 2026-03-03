@@ -94,7 +94,8 @@ def _get_or_create_conversation(
     attendant_id: Optional[int],
     now: datetime,
     is_group: bool = False,
-) -> Conversation:
+    create_if_missing: bool = True,
+) -> tuple:
     conv = (
         db.query(Conversation)
         .filter(
@@ -105,6 +106,8 @@ def _get_or_create_conversation(
         .first()
     )
     if not conv:
+        if not create_if_missing:
+            return None, False
         conv = Conversation(
             contact_phone=contact_phone,
             contact_name=contact_name,
@@ -117,19 +120,21 @@ def _get_or_create_conversation(
         )
         db.add(conv)
         db.flush()
+        return conv, True
     else:
         if contact_name and not conv.contact_name:
             conv.contact_name = contact_name
         if attendant_id and not conv.attendant_id:
             conv.attendant_id = attendant_id
         conv.last_message_at = now
-    return conv
+        return conv, False
 
 
-def process_message_upsert(db: Session, instance_name: str, data: Any):
+def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
+    """Returns list of newly created conversation IDs (inbound only) for team routing."""
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
-        return
+        return []
 
     messages_data = data if isinstance(data, list) else [data]
     if get_settings().DEBUG and messages_data:
@@ -140,6 +145,7 @@ def process_message_upsert(db: Session, instance_name: str, data: Any):
             msg_type = "call" if _get_call_log(content) else (keys[0] if keys else "empty")
             logger.debug(f"webhook messages.upsert: instance={instance_name} type={msg_type} keys={keys[:5]}")
 
+    new_conversation_ids: list = []
     for msg_data in messages_data:
         key = msg_data.get("key", {})
         evolution_id = key.get("id")
@@ -183,7 +189,9 @@ def process_message_upsert(db: Session, instance_name: str, data: Any):
             ).first()
             attendant_id = attendant.id if attendant else None
 
-        conv = _get_or_create_conversation(
+        # Outbound messages from webhook never create a new conversation —
+        # they should only be appended to an existing open one.
+        conv, is_new = _get_or_create_conversation(
             db=db,
             contact_phone=contact_phone,
             contact_name=contact_name,
@@ -191,7 +199,15 @@ def process_message_upsert(db: Session, instance_name: str, data: Any):
             attendant_id=attendant_id,
             now=timestamp,
             is_group=is_group,
+            create_if_missing=(direction == MessageDirection.inbound),
         )
+
+        if conv is None:
+            # Outbound message with no matching open conversation — skip
+            continue
+
+        if is_new and direction == MessageDirection.inbound and not is_group:
+            new_conversation_ids.append(conv.id)
 
         call_outcome = None
         call_duration_secs = None
@@ -228,6 +244,7 @@ def process_message_upsert(db: Session, instance_name: str, data: Any):
                 conv.first_response_time_seconds = delta
 
     db.commit()
+    return new_conversation_ids
 
 
 def process_groups_upsert(db: Session, instance_name: str, data: Any):
@@ -359,7 +376,7 @@ def process_call_event(db: Session, instance_name: str, body: Any):
     ).first()
     attendant_id = attendant.id if attendant else None
 
-    conv = _get_or_create_conversation(
+    conv, _ = _get_or_create_conversation(
         db=db,
         contact_phone=contact_phone,
         contact_name=None,

@@ -19,11 +19,13 @@ class Attendant(Base):
     email = Column(String(150), nullable=True)
     role = Column(Enum(AttendantRole), default=AttendantRole.agent)
     instance_id = Column(Integer, ForeignKey("instances.id"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     instance = relationship("Instance", back_populates="attendants")
+    team = relationship("Team", foreign_keys=[team_id])
     conversations = relationship(
         "Conversation",
         foreign_keys="Conversation.attendant_id",

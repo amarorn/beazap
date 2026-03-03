@@ -1,9 +1,36 @@
+export interface Team {
+  id: number
+  name: string
+  description: string | null
+  keywords: string | null
+  instance_id: number
+  active: boolean
+  created_at: string
+}
+
+export interface TeamMetrics {
+  team_id: number
+  team_name: string
+  instance_id: number
+  total_conversations: number
+  open_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  waiting_for_response: number
+  conversations_today: number
+  avg_first_response_seconds: number | null
+  resolution_rate: number
+  total_messages_received: number
+}
+
 export interface Instance {
   id: number
   name: string
   instance_name: string
   api_url: string
+  api_key: string
   phone_number: string | null
+  owner_email: string | null
   active: boolean
   created_at: string
 }
@@ -15,6 +42,7 @@ export interface Attendant {
   email: string | null
   role: 'manager' | 'agent'
   instance_id: number
+  team_id: number | null
   active: boolean
   created_at: string
 }
@@ -118,6 +146,9 @@ export interface ConversationDetail {
   first_response_time_seconds: number | null
   inbound_count: number
   outbound_count: number
+  // Equipe de triagem
+  team_id?: number | null
+  team_name?: string | null
   // Análise LLM
   analysis_category?: string | null
   analysis_sentiment?: string | null
@@ -155,6 +186,37 @@ export interface ConversationMessage {
   sender_name?: string | null
 }
 
+export interface SlaAlertEntry {
+  id: number
+  contact_name: string | null
+  contact_phone: string
+  attendant_name: string | null
+  opened_at: string
+  wait_seconds: number
+}
+
+export interface SlaAlertsResponse {
+  alerts: SlaAlertEntry[]
+  count: number
+  threshold_minutes: number
+}
+
+export interface QuickReply {
+  id: number
+  title: string
+  text: string
+  active: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface ConversationNote {
+  id: number
+  author_name: string
+  content: string
+  created_at: string
+}
+
 export interface CallLogEntry {
   id: number
   conversation_id: number
@@ -166,4 +228,70 @@ export interface CallLogEntry {
   call_outcome: string | null
   call_duration_secs: number | null
   is_video_call: boolean | null
+}
+
+export interface DatabricksConfig {
+  id: number
+  instance_id: number | null
+  workspace_url: string
+  api_token_masked: string
+  job_id: string
+  trigger_keyword: string
+  active: boolean
+  param_catalog: string
+  param_schema_name: string
+  param_modo: string
+  param_output_path: string
+  client_code_regex: string
+  client_code_min_length: number | null
+  client_code_max_length: number | null
+  send_error_reply: boolean
+  reply_example: string | null
+}
+
+export interface DatabricksValidation {
+  keyword_found: boolean
+  codigo_cliente: string | null
+  is_valid: boolean
+  error_reason: string | null
+  error_reply: string | null
+  notebook_params: Record<string, string> | null
+}
+
+export interface DatabricksJobRun {
+  id: number
+  config_id: number | null
+  databricks_run_id: string | null
+  triggered_by_phone: string | null
+  triggered_by_message: string | null
+  trigger_source: 'whatsapp' | 'manual'
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+  error_message: string | null
+  started_at: string
+  completed_at: string | null
+  extracted_codigo_cliente: string | null
+  notebook_params_json: string | null
+}
+
+export interface AttendantSummary {
+  attendant_id: number
+  attendant_name: string
+  role: string | null
+  period_week: string
+  total_conversations: number
+  resolved_conversations: number
+  abandoned_conversations: number
+  resolution_rate: number
+  avg_first_response_seconds: number | null
+  avg_resolution_seconds: number | null
+  total_messages_sent: number
+  total_messages_received: number
+  avg_satisfaction: number | null
+  sla_5min_rate: number
+  sla_15min_rate: number
+  sla_30min_rate: number
+  top_categories: Record<string, number>
+  top_sentiments: Record<string, number>
+  llm_summary: string | null
+  generated_at: string | null
 }
