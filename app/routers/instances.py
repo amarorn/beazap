@@ -240,6 +240,25 @@ async def update_instance(instance_id: int, payload: InstanceUpdate, db: Session
     }
 
 
+@router.get("/instances/{instance_id}/auto-message")
+def get_auto_message(instance_id: int, db: Session = Depends(get_db)):
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    return {"enabled": instance.auto_message_enabled, "text": instance.auto_message_text or ""}
+
+
+@router.put("/instances/{instance_id}/auto-message")
+def set_auto_message(instance_id: int, payload: dict, db: Session = Depends(get_db)):
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    instance.auto_message_enabled = bool(payload.get("enabled", False))
+    instance.auto_message_text = payload.get("text") or None
+    db.commit()
+    return {"enabled": instance.auto_message_enabled, "text": instance.auto_message_text or ""}
+
+
 @router.delete("/instances/{instance_id}")
 def delete_instance(instance_id: int, db: Session = Depends(get_db)):
     instance = db.query(Instance).filter(Instance.id == instance_id).first()

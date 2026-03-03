@@ -173,6 +173,10 @@ export const instancesApi = {
     api.get<{ url?: string; events?: string[] }>(`/api/instances/${id}/webhook`).then(r => r.data),
   sendQrCodeEmail: (id: number, email?: string) =>
     api.post<{ status: string; email: string }>(`/api/instances/${id}/send-qrcode-email`, email ? { email } : {}).then(r => r.data),
+  getAutoMessage: (id: number) =>
+    api.get<{ enabled: boolean; text: string }>(`/api/instances/${id}/auto-message`).then(r => r.data),
+  setAutoMessage: (id: number, data: { enabled: boolean; text: string }) =>
+    api.put<{ enabled: boolean; text: string }>(`/api/instances/${id}/auto-message`, data).then(r => r.data),
 }
 
 export const attendantsApi = {

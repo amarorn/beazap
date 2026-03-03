@@ -74,6 +74,19 @@ async def get_webhook(api_url: str, api_key: str, instance_name: str) -> Optiona
     return None
 
 
+def send_text_message(api_url: str, api_key: str, instance_name: str, phone: str, text: str) -> bool:
+    """Sends a text message via Evolution API (synchronous). Returns True on success."""
+    url = f"{api_url.rstrip('/')}/message/sendText/{instance_name}"
+    payload = {"number": phone, "text": text}
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(url, json=payload, headers={"apikey": api_key})
+            return resp.status_code in (200, 201)
+    except Exception as e:
+        logger.warning("send_text_message failed for %s → %s: %s", instance_name, phone, e)
+        return False
+
+
 async def get_qrcode(api_url: str, api_key: str, instance_name: str) -> Optional[str]:
     """Fetches QR code base64 from Evolution API connect endpoint."""
     url = f"{api_url.rstrip('/')}/instance/connect/{instance_name}"

@@ -8,6 +8,7 @@ from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection, MessageType
 from app.models.attendant import Attendant
 from app.models.instance import Instance
+from app.services.evolution_service import send_text_message
 
 
 def _extract_text(message_content: Dict[str, Any]) -> Optional[str]:
@@ -208,6 +209,10 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
 
         if is_new and direction == MessageDirection.inbound and not is_group:
             new_conversation_ids.append(conv.id)
+            if instance.auto_message_enabled and instance.auto_message_text:
+                attendant_name = attendant.name if attendant else "Atendente"
+                msg_text = instance.auto_message_text.replace("{nome_atendente}", attendant_name)
+                send_text_message(instance.api_url, instance.api_key, instance.instance_name, contact_phone, msg_text)
 
         call_outcome = None
         call_duration_secs = None
