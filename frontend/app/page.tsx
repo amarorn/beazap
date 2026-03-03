@@ -14,6 +14,7 @@ import { StatusDonut } from '@/components/dashboard/StatusDonut'
 import { AttendantsTable } from '@/components/dashboard/AttendantsTable'
 import { RecentConversations } from '@/components/dashboard/RecentConversations'
 import { AnalysisChart } from '@/components/dashboard/AnalysisChart'
+import { SlaAlertsWidget } from '@/components/dashboard/SlaAlertsWidget'
 import { formatResponseTime } from '@/lib/utils'
 import { Users, ChevronRight } from 'lucide-react'
 
@@ -76,11 +77,17 @@ export default function DashboardPage() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Dashboard</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Visão geral dos atendimentos em tempo real</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">Dashboard</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Visão geral dos atendimentos em tempo real</p>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Ao vivo</span>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -117,8 +124,11 @@ export default function DashboardPage() {
       )}
 
       {extendedMetrics && (
-        <div className="space-y-3">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Métricas de Atendimento</h2>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wide">Métricas de Atendimento</h2>
+            <div className="mt-1 h-px bg-zinc-200 dark:bg-white/[0.06]" />
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             <KpiCard
               label="T.M. Resolução"
@@ -163,19 +173,22 @@ export default function DashboardPage() {
 
       {/* Group Metrics */}
       {groupOverview && groupOverview.total_groups > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <Users className="w-4 h-4 text-emerald-500" />
-              Métricas de Grupos
-            </h2>
-            <Link
-              href="/groups"
-              className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1 transition-colors"
-            >
-              Ver grupos
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wide flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-emerald-500" />
+                Métricas de Grupos
+              </h2>
+              <Link
+                href="/groups"
+                className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1 transition-colors"
+              >
+                Ver grupos
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+            <div className="mt-1 h-px bg-zinc-200 dark:bg-white/[0.06]" />
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <KpiCard
@@ -212,8 +225,11 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* SLA Alerts */}
+      <SlaAlertsWidget />
+
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2">
           <VolumeChart data={dailyVolume} />
         </div>

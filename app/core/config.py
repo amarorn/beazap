@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    DATABASE_URL: str = "sqlite:///./beazap.db"
+    DATABASE_URL: str = "postgresql://beazap:beazap@localhost:5432/beazap"
 
     SECRET_KEY: str = "change-this-in-production"
 
@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "openai"  # "anthropic" ou "openai"
 
     WEBHOOK_SECRET: str = ""
+
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
 
     class Config:
         env_file = ".env"

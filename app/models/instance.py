@@ -14,6 +14,7 @@ class Instance(Base):
     api_key = Column(String(255), nullable=False)
     active = Column(Boolean, default=True)
     phone_number = Column(String(30), nullable=True)
+    owner_email = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
