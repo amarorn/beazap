@@ -28,7 +28,9 @@ export interface Instance {
   name: string
   instance_name: string
   api_url: string
+  api_key: string
   phone_number: string | null
+  owner_email: string | null
   active: boolean
   created_at: string
 }

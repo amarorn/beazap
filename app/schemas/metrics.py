@@ -159,6 +159,15 @@ class InstanceCreate(BaseModel):
     api_url: str
     api_key: str
     phone_number: Optional[str] = None
+    owner_email: Optional[str] = None
+
+
+class InstanceUpdate(BaseModel):
+    name: Optional[str] = None
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None
+    phone_number: Optional[str] = None
+    owner_email: Optional[str] = None
 
 
 class AttendantCreate(BaseModel):

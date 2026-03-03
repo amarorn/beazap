@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import create_tables, run_migrations
-from app.routers import webhook, metrics, instances, dashboard, sse, teams, quick_replies, reports, databricks
+from app.routers.webhook import router as webhook_router, root_router as webhook_root_router
+from app.routers import metrics, instances, dashboard, sse, teams, quick_replies, reports, databricks
 
 
 @asynccontextmanager
@@ -32,7 +33,8 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(dashboard.router)
-app.include_router(webhook.router)
+app.include_router(webhook_router)
+app.include_router(webhook_root_router)
 app.include_router(metrics.router)
 app.include_router(instances.router)
 app.include_router(sse.router)

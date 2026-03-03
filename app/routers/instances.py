@@ -4,7 +4,9 @@ from typing import List
 from app.core.database import get_db
 from app.models.instance import Instance
 from app.models.attendant import Attendant, AttendantRole
-from app.schemas.metrics import InstanceCreate, AttendantCreate, AttendantUpdate
+from app.schemas.metrics import InstanceCreate, InstanceUpdate, AttendantCreate, AttendantUpdate
+from app.services.evolution_service import create_evolution_instance, get_qrcode, configure_webhook, get_webhook
+from app.services.email_service import send_qrcode_email
 import httpx
 
 router = APIRouter(prefix="/api", tags=["instances"])
@@ -16,7 +18,7 @@ def list_instances(db: Session = Depends(get_db)):
 
 
 @router.post("/instances")
-def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)):
+async def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)):
     existing = db.query(Instance).filter(Instance.instance_name == payload.instance_name).first()
     if existing:
         if existing.active:
@@ -28,12 +30,123 @@ def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)):
         existing.active = True
         db.commit()
         db.refresh(existing)
-        return existing
-    instance = Instance(**payload.model_dump())
-    db.add(instance)
-    db.commit()
-    db.refresh(instance)
-    return instance
+        instance = existing
+    else:
+        db_data = payload.model_dump(exclude={"owner_email"})
+        instance = Instance(**db_data, owner_email=payload.owner_email)
+        db.add(instance)
+        db.commit()
+        db.refresh(instance)
+
+    # Try to create/connect instance in Evolution API and get QR code
+    qrcode = None
+    evolution_error = None
+    evolution_created = False
+    try:
+        result = await create_evolution_instance(payload.api_url, payload.api_key, payload.instance_name)
+        if result.get("_already_exists"):
+            evolution_error = f"Instância já existe na Evolution API (HTTP {result.get('_status')}). Tentando obter QR diretamente."
+        else:
+            evolution_created = True
+            # Some Evolution versions return the QR directly in the create response
+            qrcode = (
+                (result.get("qrcode") or {}).get("base64")
+                or result.get("base64")
+            )
+    except Exception as e:
+        evolution_error = str(e)
+
+    # If QR not in create response, fetch separately
+    if not qrcode:
+        try:
+            qrcode = await get_qrcode(payload.api_url, payload.api_key, payload.instance_name)
+        except Exception:
+            pass
+
+    # Send QR by email if requested and available
+    email_sent = None
+    if qrcode and payload.owner_email:
+        email_sent = send_qrcode_email(payload.owner_email, payload.instance_name, qrcode)
+
+    return {
+        "id": instance.id,
+        "name": instance.name,
+        "instance_name": instance.instance_name,
+        "api_url": instance.api_url,
+        "api_key": instance.api_key,
+        "phone_number": instance.phone_number,
+        "active": instance.active,
+        "created_at": instance.created_at,
+        "qrcode": qrcode,
+        "evolution_created": evolution_created,
+        "evolution_error": evolution_error,
+        "email_sent": email_sent,
+    }
+
+
+@router.get("/instances/{instance_id}/qrcode")
+async def get_instance_qrcode(instance_id: int, db: Session = Depends(get_db)):
+    """Fetches a fresh QR code from the Evolution API for this instance."""
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    qrcode = await get_qrcode(instance.api_url, instance.api_key, instance.instance_name)
+    if not qrcode:
+        raise HTTPException(status_code=404, detail="QR Code não disponível. A instância pode já estar conectada ou a Evolution API está inacessível.")
+    return {"qrcode": qrcode}
+
+
+@router.post("/instances/{instance_id}/send-qrcode-email")
+async def send_qrcode_email_endpoint(instance_id: int, payload: dict = {}, db: Session = Depends(get_db)):
+    """Fetches a fresh QR code and emails it to the instance owner_email (or a custom email in the payload)."""
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+
+    to_email = payload.get("email") or instance.owner_email
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Nenhum email configurado para esta instância.")
+
+    qrcode = await get_qrcode(instance.api_url, instance.api_key, instance.instance_name)
+    if not qrcode:
+        raise HTTPException(status_code=404, detail="QR Code não disponível. A instância pode já estar conectada ou a Evolution API está inacessível.")
+
+    sent = send_qrcode_email(to_email, instance.instance_name, qrcode)
+    if not sent:
+        raise HTTPException(status_code=502, detail="Falha ao enviar email. Verifique as configurações SMTP no servidor.")
+
+    return {"status": "ok", "email": to_email}
+
+
+@router.post("/instances/{instance_id}/webhook")
+async def set_instance_webhook(
+    instance_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Configures the webhook on the Evolution API for this instance."""
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    server_url = payload.get("server_url", "").rstrip("/")
+    if not server_url:
+        raise HTTPException(status_code=400, detail="server_url é obrigatório")
+    webhook_url = f"{server_url}/webhook/{instance.instance_name}"
+    try:
+        result = await configure_webhook(instance.api_url, instance.api_key, instance.instance_name, webhook_url)
+        return {"status": "ok", "webhook_url": webhook_url, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao configurar webhook na Evolution API: {e}")
+
+
+@router.get("/instances/{instance_id}/webhook")
+async def get_instance_webhook(instance_id: int, db: Session = Depends(get_db)):
+    """Returns the current webhook configuration from the Evolution API."""
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    data = await get_webhook(instance.api_url, instance.api_key, instance.instance_name)
+    return data or {}
 
 
 @router.get("/instances/{instance_id}/status")
@@ -66,6 +179,65 @@ async def check_instance_status(instance_id: int, db: Session = Depends(get_db))
         return {"state": "timeout", "error": "Evolution API não respondeu em 10s", "api_url": instance.api_url}
     except Exception as e:
         return {"state": "error", "error": str(e), "api_url": instance.api_url}
+
+
+@router.put("/instances/{instance_id}")
+async def update_instance(instance_id: int, payload: InstanceUpdate, db: Session = Depends(get_db)):
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    if payload.name is not None:
+        instance.name = payload.name
+    if payload.api_url is not None:
+        instance.api_url = payload.api_url
+    if payload.api_key is not None:
+        instance.api_key = payload.api_key
+    if payload.phone_number is not None:
+        instance.phone_number = payload.phone_number
+    if payload.owner_email is not None:
+        instance.owner_email = payload.owner_email if payload.owner_email != '' else None
+    db.commit()
+    db.refresh(instance)
+
+    evolution_created = False
+    evolution_error = None
+    qrcode = None
+    api_url = instance.api_url or ""
+    api_key = instance.api_key or ""
+    instance_name = instance.instance_name
+    if api_url and api_key and instance_name:
+        try:
+            result = await create_evolution_instance(api_url, api_key, instance_name)
+            if result.get("_already_exists"):
+                evolution_error = f"Instância já existe na Evolution API (HTTP {result.get('_status')})."
+            else:
+                evolution_created = True
+                qrcode = (
+                    (result.get("qrcode") or {}).get("base64")
+                    or result.get("base64")
+                )
+        except Exception as e:
+            evolution_error = str(e)
+    if not qrcode and api_url and api_key and instance_name:
+        try:
+            qrcode = await get_qrcode(api_url, api_key, instance_name)
+        except Exception:
+            pass
+
+    return {
+        "id": instance.id,
+        "name": instance.name,
+        "instance_name": instance.instance_name,
+        "api_url": instance.api_url,
+        "api_key": instance.api_key,
+        "phone_number": instance.phone_number,
+        "owner_email": instance.owner_email,
+        "active": instance.active,
+        "created_at": instance.created_at,
+        "evolution_created": evolution_created,
+        "evolution_error": evolution_error,
+        "qrcode": qrcode,
+    }
 
 
 @router.delete("/instances/{instance_id}")
