@@ -1,14 +1,30 @@
 import logging
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection, MessageType
 from app.models.attendant import Attendant
 from app.models.instance import Instance
 from app.services.evolution_service import send_text_message
+
+
+def _normalize_webhook_data(data: Any) -> List[Dict[str, Any]]:
+    """Normaliza data do webhook: aceita lista, objeto único ou data.messages."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        if "messages" in data:
+            msgs = data.get("messages") or []
+            return msgs if isinstance(msgs, list) else [msgs]
+        return [data]
+    return []
 
 
 def _extract_text(message_content: Dict[str, Any]) -> Optional[str]:
@@ -131,13 +147,15 @@ def _get_or_create_conversation(
         return conv, False
 
 
-def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
-    """Returns list of newly created conversation IDs (inbound only) for team routing."""
+def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[List[int], List[Tuple[str, str, str, str, str]]]:
+    """Returns (new_conversation_ids, auto_messages_to_send).
+    auto_messages_to_send: [(api_url, api_key, instance_name, contact_phone, msg_text), ...]
+    """
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
-        return []
+        return [], []
 
-    messages_data = data if isinstance(data, list) else [data]
+    messages_data = _normalize_webhook_data(data)
     if get_settings().DEBUG and messages_data:
         logger = logging.getLogger(__name__)
         for m in messages_data:
@@ -146,7 +164,8 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
             msg_type = "call" if _get_call_log(content) else (keys[0] if keys else "empty")
             logger.debug(f"webhook messages.upsert: instance={instance_name} type={msg_type} keys={keys[:5]}")
 
-    new_conversation_ids: list = []
+    new_conversation_ids: List[int] = []
+    auto_messages_to_send: List[Tuple[str, str, str, str, str]] = []
     for msg_data in messages_data:
         key = msg_data.get("key", {})
         evolution_id = key.get("id")
@@ -212,7 +231,13 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
             if instance.auto_message_enabled and instance.auto_message_text:
                 attendant_name = attendant.name if attendant else "Atendente"
                 msg_text = instance.auto_message_text.replace("{nome_atendente}", attendant_name)
-                send_text_message(instance.api_url, instance.api_key, instance.instance_name, contact_phone, msg_text)
+                auto_messages_to_send.append((
+                    instance.api_url,
+                    instance.api_key,
+                    instance.instance_name,
+                    contact_phone,
+                    msg_text,
+                ))
 
         call_outcome = None
         call_duration_secs = None
@@ -249,7 +274,16 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> list:
                 conv.first_response_time_seconds = delta
 
     db.commit()
-    return new_conversation_ids
+    return new_conversation_ids, auto_messages_to_send
+
+
+def send_auto_message_task(api_url: str, api_key: str, instance_name: str, contact_phone: str, msg_text: str) -> None:
+    """Envia mensagem automatica em background. Loga sucesso ou falha."""
+    ok = send_text_message(api_url, api_key, instance_name, contact_phone, msg_text)
+    if ok:
+        logger.info("Mensagem automatica enviada para %s (instance=%s)", contact_phone, instance_name)
+    else:
+        logger.warning("Falha ao enviar mensagem automatica para %s (instance=%s)", contact_phone, instance_name)
 
 
 def process_groups_upsert(db: Session, instance_name: str, data: Any):

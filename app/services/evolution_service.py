@@ -21,7 +21,7 @@ async def create_evolution_instance(api_url: str, api_key: str, instance_name: s
         return resp.json()
 
 
-WEBHOOK_EVENTS = [
+WEBHOOK_EVENTS_DEFAULT = [
     "MESSAGES_UPSERT",
     "MESSAGES_UPDATE",
     "GROUPS_UPSERT",
@@ -30,17 +30,56 @@ WEBHOOK_EVENTS = [
     "CALL",
 ]
 
+WEBHOOK_EVENTS_ALL = [
+    "APPLICATION_STARTUP",
+    "CALL",
+    "CHATS_DELETE",
+    "CHATS_SET",
+    "CHATS_UPDATE",
+    "CHATS_UPSERT",
+    "CONNECTION_UPDATE",
+    "CONTACTS_SET",
+    "CONTACTS_UPDATE",
+    "CONTACTS_UPSERT",
+    "GROUP_PARTICIPANTS_UPDATE",
+    "GROUP_UPDATE",
+    "GROUPS_UPSERT",
+    "LABELS_ASSOCIATION",
+    "LABELS_EDIT",
+    "LOGOUT_INSTANCE",
+    "MESSAGES_DELETE",
+    "MESSAGES_SET",
+    "MESSAGES_UPDATE",
+    "MESSAGES_UPSERT",
+    "PRESENCE_UPDATE",
+    "QRCODE_UPDATED",
+    "REMOVE_INSTANCE",
+    "SEND_MESSAGE",
+    "TYPEBOT_CHANGE_STATUS",
+    "TYPEBOT_START",
+]
 
-async def configure_webhook(api_url: str, api_key: str, instance_name: str, webhook_url: str) -> dict:
+
+async def configure_webhook(
+    api_url: str,
+    api_key: str,
+    instance_name: str,
+    webhook_url: str,
+    *,
+    webhook_by_events: bool = False,
+    webhook_base64: bool = False,
+    events: Optional[list[str]] = None,
+) -> dict:
     """Sets the webhook URL and events on the Evolution API instance (v2 format)."""
     url = f"{api_url.rstrip('/')}/webhook/set/{instance_name}"
+    evts = events if events is not None else WEBHOOK_EVENTS_DEFAULT
     payload = {
         "webhook": {
             "url": webhook_url,
             "enabled": True,
-            "webhookByEvents": False,
-            "webhookBase64": False,
-            "events": WEBHOOK_EVENTS,
+            "webhookByEvents": webhook_by_events,
+            "webhookBase64": webhook_base64,
+            "events": evts,
         }
     }
     try:
@@ -81,7 +120,14 @@ def send_text_message(api_url: str, api_key: str, instance_name: str, phone: str
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, json=payload, headers={"apikey": api_key})
-            return resp.status_code in (200, 201)
+            if resp.status_code in (200, 201):
+                return True
+            body = resp.text[:500] if resp.text else ""
+            logger.warning(
+                "send_text_message HTTP %s instance=%s phone=%s: %s",
+                resp.status_code, instance_name, phone, body,
+            )
+            return False
     except Exception as e:
         logger.warning("send_text_message failed for %s → %s: %s", instance_name, phone, e)
         return False

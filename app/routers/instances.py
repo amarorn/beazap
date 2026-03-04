@@ -132,8 +132,21 @@ async def set_instance_webhook(
     if not server_url:
         raise HTTPException(status_code=400, detail="server_url é obrigatório")
     webhook_url = f"{server_url}/webhook/{instance.instance_name}"
+    webhook_by_events = payload.get("webhook_by_events", False)
+    webhook_base64 = payload.get("webhook_base64", False)
+    events = payload.get("events")
+    if events is not None and len(events) == 0:
+        events = None
     try:
-        result = await configure_webhook(instance.api_url, instance.api_key, instance.instance_name, webhook_url)
+        result = await configure_webhook(
+            instance.api_url,
+            instance.api_key,
+            instance.instance_name,
+            webhook_url,
+            webhook_by_events=webhook_by_events,
+            webhook_base64=webhook_base64,
+            events=events,
+        )
         return {"status": "ok", "webhook_url": webhook_url, "result": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erro ao configurar webhook na Evolution API: {e}")

@@ -74,6 +74,8 @@ def run_migrations():
         f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} send_error_reply BOOLEAN DEFAULT TRUE",
         f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} reply_example VARCHAR(300)",
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} owner_email VARCHAR(255)",
+        f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_enabled BOOLEAN DEFAULT FALSE",
+        f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_text TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
