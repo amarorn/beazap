@@ -220,17 +220,22 @@ fi
 
 # 7. Backend Python
 echo "[7/8] Configurando backend..."
-if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f requirements.txt ]]; then
+if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f "$PROJ_DIR/requirements.txt" ]]; then
+  cd "$PROJ_DIR"
   if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
     run apt-get install -y -qq python3-venv 2>/dev/null || run apt-get install -y -qq python3.11-venv 2>/dev/null || true
   fi
-  if [[ -d venv ]] && ! venv/bin/python3 -c "import sys" 2>/dev/null; then
+  if [[ -d venv ]] && ! "$PROJ_DIR/venv/bin/python3" -c "import sys" 2>/dev/null; then
     rm -rf venv
   fi
   if [[ ! -d venv ]]; then
     python3 -m venv venv
   fi
-  source venv/bin/activate
+  if [[ ! -f venv/bin/activate ]]; then
+    echo "Erro: venv nao foi criado corretamente. Execute: python3 -m venv venv"
+    exit 1
+  fi
+  source "$PROJ_DIR/venv/bin/activate"
   pip install -q -r requirements.txt
   if [[ ! -f .env ]]; then
     cp .env.example .env
@@ -244,8 +249,8 @@ fi
 
 # 8. Frontend
 echo "[8/8] Configurando frontend..."
-if [[ "$SKIP_NODE" != "true" ]] && [[ -d frontend ]]; then
-  cd frontend
+if [[ "$SKIP_NODE" != "true" ]] && [[ -d "$PROJ_DIR/frontend" ]]; then
+  cd "$PROJ_DIR/frontend"
   if [[ ! -d node_modules ]]; then
     npm ci
   fi
@@ -254,7 +259,7 @@ if [[ "$SKIP_NODE" != "true" ]] && [[ -d frontend ]]; then
     echo "  frontend/.env.local criado."
   fi
   npm run build
-  cd ..
+  cd "$PROJ_DIR"
 fi
 
 echo ""
