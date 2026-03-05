@@ -221,6 +221,12 @@ fi
 # 7. Backend Python
 echo "[7/8] Configurando backend..."
 if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f requirements.txt ]]; then
+  if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
+    run apt-get install -y -qq python3-venv 2>/dev/null || run apt-get install -y -qq python3.11-venv 2>/dev/null || true
+  fi
+  if [[ -d venv ]] && ! venv/bin/python3 -c "import sys" 2>/dev/null; then
+    rm -rf venv
+  fi
   if [[ ! -d venv ]]; then
     python3 -m venv venv
   fi
