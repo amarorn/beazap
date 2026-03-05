@@ -206,6 +206,8 @@ if [[ "$SKIP_DOCKER" != "true" ]]; then
   if [[ $EUID -ne 0 ]] && ! groups | grep -q docker; then
     echo "  Execute 'newgrp docker' ou faca logout/login e rode novamente para subir os containers."
   else
+    echo "  Parando containers anteriores (se existirem)..."
+    (cd "$PROJ_DIR" && (docker compose down 2>/dev/null || true))
     echo "  (pode demorar 1-2 min para baixar imagens)"
     (cd "$PROJ_DIR" && (docker compose up -d 2>/dev/null || run docker compose up -d))
     echo "  Aguardando PostgreSQL..."
