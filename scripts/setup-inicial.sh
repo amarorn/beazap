@@ -6,6 +6,10 @@
 
 set -e
 
+# Evita avisos de locale do perl/dpkg
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+
 REPO_URL=""
 INSTALL_DIR=""
 SKIP_DOCKER=false
@@ -202,6 +206,7 @@ if [[ "$SKIP_DOCKER" != "true" ]]; then
   if [[ $EUID -ne 0 ]] && ! groups | grep -q docker; then
     echo "  Execute 'newgrp docker' ou faca logout/login e rode novamente para subir os containers."
   else
+    echo "  (pode demorar 1-2 min para baixar imagens)"
     (cd "$PROJ_DIR" && (docker compose up -d 2>/dev/null || run docker compose up -d))
     echo "  Aguardando PostgreSQL..."
     for i in {1..30}; do
