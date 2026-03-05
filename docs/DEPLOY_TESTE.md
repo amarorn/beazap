@@ -14,7 +14,7 @@ O BeaZap precisa de:
 | Frontend (Next.js) | 3000 | Interface web |
 | Evolution API | 8080 | WhatsApp (via Docker) |
 | Evolution Manager | 8081 | Interface de gerenciamento Evolution |
-| PostgreSQL | 5433 | Banco de dados (host) |
+| PostgreSQL | 5434 | Banco de dados (host) |
 
 **Ponto crítico:** A Evolution API precisa alcançar o webhook do BeaZap. Se a Evolution roda em Docker e o BeaZap no host, use `http://host.docker.internal:8000` (Mac/Windows) ou o IP do host.
 
@@ -220,7 +220,7 @@ Em Configurações > Webhooks, use a URL pública do backend, ex: `https://api.s
 ### Backend (`.env`)
 
 ```env
-DATABASE_URL=postgresql://beazap:beazap@localhost:5433/beazap
+DATABASE_URL=postgresql://beazap:beazap@localhost:5434/beazap
 EVOLUTION_API_URL=http://localhost:8080
 EVOLUTION_API_KEY=beazap-secret-2026
 SECRET_KEY=chave-forte-para-teste
