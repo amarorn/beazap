@@ -80,7 +80,7 @@ run() {
 }
 
 # 1. Atualizar sistema
-echo "[1/8] Atualizando sistema..."
+echo "[1/9] Atualizando sistema..."
 if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
   run apt-get update -qq
   run apt-get install -y -qq curl git ca-certificates gnupg
@@ -92,7 +92,7 @@ fi
 
 # 2. Instalar Docker
 if [[ "$SKIP_DOCKER" != "true" ]]; then
-  echo "[2/8] Instalando Docker..."
+  echo "[2/9] Instalando Docker..."
   if command -v docker &>/dev/null; then
     echo "  Docker ja instalado: $(docker --version)"
   else
@@ -123,12 +123,12 @@ if [[ "$SKIP_DOCKER" != "true" ]]; then
     fi
   fi
 else
-  echo "[2/8] Pulando Docker (--skip-docker)"
+  echo "[2/9] Pulando Docker (--skip-docker)"
 fi
 
 # 3. Instalar Python 3.11+
 if [[ "$SKIP_PYTHON" != "true" ]]; then
-  echo "[3/8] Instalando Python..."
+  echo "[3/9] Instalando Python..."
   if command -v python3 &>/dev/null; then
     PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0")
     if python3 -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)" 2>/dev/null; then
@@ -144,12 +144,12 @@ if [[ "$SKIP_PYTHON" != "true" ]]; then
     fi
   fi
 else
-  echo "[3/8] Pulando Python (--skip-python)"
+  echo "[3/9] Pulando Python (--skip-python)"
 fi
 
 # 4. Instalar Node.js 20 LTS
 if [[ "$SKIP_NODE" != "true" ]]; then
-  echo "[4/8] Instalando Node.js..."
+  echo "[4/9] Instalando Node.js..."
   if command -v node &>/dev/null; then
     NODE_VER=$(node -v 2>/dev/null | sed 's/v//')
     echo "  Node.js ja instalado: $(node -v)"
@@ -165,11 +165,11 @@ if [[ "$SKIP_NODE" != "true" ]]; then
     fi
   fi
 else
-  echo "[4/8] Pulando Node.js (--skip-node)"
+  echo "[4/9] Pulando Node.js (--skip-node)"
 fi
 
 # 5. Clonar ou usar diretorio atual
-echo "[5/8] Preparando codigo fonte..."
+echo "[5/9] Preparando codigo fonte..."
 if [[ -n "$REPO_URL" ]]; then
   if [[ -d "$PROJ_DIR/.git" ]]; then
     echo "  Diretorio $PROJ_DIR ja existe. Atualizando..."
@@ -201,7 +201,7 @@ OVERRIDE
 fi
 
 # 6. Docker Compose
-echo "[6/8] Subindo PostgreSQL, Redis e Evolution API..."
+echo "[6/9] Subindo PostgreSQL, Redis e Evolution API..."
 if [[ "$SKIP_DOCKER" != "true" ]]; then
   if [[ $EUID -ne 0 ]] && ! groups | grep -q docker; then
     echo "  Execute 'newgrp docker' ou faca logout/login e rode novamente para subir os containers."
@@ -219,7 +219,7 @@ if [[ "$SKIP_DOCKER" != "true" ]]; then
 fi
 
 # 7. Backend Python
-echo "[7/8] Configurando backend..."
+echo "[7/9] Configurando backend..."
 if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f "$PROJ_DIR/requirements.txt" ]]; then
   cd "$PROJ_DIR"
   if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
@@ -256,7 +256,7 @@ if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f "$PROJ_DIR/requirements.txt" ]]; then
 fi
 
 # 8. Frontend
-echo "[8/8] Configurando frontend..."
+echo "[8/9] Configurando frontend..."
 if [[ "$SKIP_NODE" != "true" ]] && [[ -d "$PROJ_DIR/frontend" ]]; then
   cd "$PROJ_DIR/frontend"
   if [[ ! -d node_modules ]]; then
@@ -277,24 +277,46 @@ if [[ "$SKIP_NODE" != "true" ]] && [[ -d "$PROJ_DIR/frontend" ]]; then
   fi
 fi
 
+# 9. Iniciar backend e frontend em background
+echo "[9/9] Iniciando backend e frontend em background..."
+mkdir -p "$PROJ_DIR/logs"
+cd "$PROJ_DIR"
+
+if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f venv/bin/python ]]; then
+  if pgrep -f "python.*main.py" >/dev/null 2>&1; then
+    echo "  Backend ja em execucao."
+  else
+    nohup venv/bin/python main.py >> logs/backend.log 2>&1 &
+    echo "  Backend iniciado (PID $!). Logs: $PROJ_DIR/logs/backend.log"
+    sleep 2
+  fi
+fi
+
+if [[ "$SKIP_NODE" != "true" ]] && [[ -d frontend/node_modules ]]; then
+  if pgrep -f "next dev" >/dev/null 2>&1; then
+    echo "  Frontend ja em execucao."
+  else
+    (cd frontend && nohup npm run dev -- -H 0.0.0.0 >> ../logs/frontend.log 2>&1 &)
+    echo "  Frontend iniciado. Logs: $PROJ_DIR/logs/frontend.log"
+  fi
+fi
+
 echo ""
 echo "=========================================="
 echo "  Setup concluido!"
 echo "=========================================="
+echo ""
+echo "Backend e frontend rodando em background."
 echo ""
 echo "Proximos passos:"
 echo ""
 echo "1. Edite o .env com suas chaves (OPENAI_API_KEY ou ANTHROPIC_API_KEY):"
 echo "   nano $PROJ_DIR/.env"
 echo ""
-echo "2. Inicie o backend:"
-echo "   cd $PROJ_DIR && source venv/bin/activate && python main.py"
+echo "2. Acesse: http://localhost:3000 (ou http://SEU_IP:3000)"
 echo ""
-echo "3. Em outro terminal, inicie o frontend:"
-echo "   cd $PROJ_DIR/frontend && npm run dev"
-echo ""
-echo "4. Acesse: http://localhost:3000"
-echo ""
-echo "5. Configure o webhook em Configuracoes > Webhooks."
+echo "3. Configure o webhook em Configuracoes > Webhooks."
 echo "   URL base: http://SEU_IP:8000 ou http://host.docker.internal:8000 (se Evolution no Docker)"
+echo ""
+echo "Logs: tail -f $PROJ_DIR/logs/backend.log  |  tail -f $PROJ_DIR/logs/frontend.log"
 echo ""
