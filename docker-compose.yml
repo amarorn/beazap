@@ -73,6 +73,15 @@ services:
       - beazap-net
     restart: unless-stopped
 
+  evolution-manager:
+    image: evoapicloud/evolution-manager:v2.3.5
+    container_name: beazap-evolution-manager
+    ports:
+      - "8081:80"
+    networks:
+      - beazap-net
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
