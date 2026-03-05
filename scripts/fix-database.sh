@@ -16,7 +16,7 @@ if ! docker ps --format '{{.Names}}' | grep -q beazap-postgres; then
 fi
 
 # Descobre a porta do postgres no host
-PG_PORT=$(docker port beazap-postgres 5432 2>/dev/null | rev | cut -d: -f1 | rev)
+PG_PORT=$(docker port beazap-postgres 5432 2>/dev/null | head -1 | rev | cut -d: -f1 | rev)
 if [[ -z "$PG_PORT" ]]; then
   PG_PORT=5434
   echo "Usando porta padrao: $PG_PORT"
@@ -27,7 +27,7 @@ fi
 # Atualiza .env
 if [[ -f .env ]]; then
   if grep -q "DATABASE_URL=postgresql://beazap:beazap@localhost:[0-9]*/beazap" .env; then
-    sed -i.bak "s|DATABASE_URL=postgresql://beazap:beazap@localhost:[0-9]*/beazap|DATABASE_URL=postgresql://beazap:beazap@localhost:${PG_PORT}/beazap|" .env
+    sed -i.bak "s#DATABASE_URL=postgresql://beazap:beazap@localhost:[0-9]*/beazap#DATABASE_URL=postgresql://beazap:beazap@localhost:${PG_PORT}/beazap#" .env
     echo ".env atualizado para porta $PG_PORT"
   fi
 fi
