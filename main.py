@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+if Path("static").exists():
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(dashboard.router)
 app.include_router(webhook_router)
