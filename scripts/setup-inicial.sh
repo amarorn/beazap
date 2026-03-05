@@ -252,6 +252,7 @@ if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f "$PROJ_DIR/requirements.txt" ]]; then
   fi
   echo "  Migracoes serao executadas na primeira execucao do backend."
   deactivate 2>/dev/null || true
+  mkdir -p "$PROJ_DIR/static"
 fi
 
 # 8. Frontend
@@ -267,6 +268,13 @@ if [[ "$SKIP_NODE" != "true" ]] && [[ -d "$PROJ_DIR/frontend" ]]; then
   fi
   npm run build
   cd "$PROJ_DIR"
+  if [[ -n "${SUDO_USER:-}" ]] && [[ $EUID -eq 0 ]]; then
+    echo "  Ajustando permissoes para usuario $SUDO_USER..."
+    for d in "$PROJ_DIR/frontend" "$PROJ_DIR/venv" "$PROJ_DIR/static"; do
+      [[ -d "$d" ]] && chown -R "$SUDO_USER:$SUDO_USER" "$d"
+    done
+    [[ -f "$PROJ_DIR/.env" ]] && chown "$SUDO_USER:$SUDO_USER" "$PROJ_DIR/.env"
+  fi
 fi
 
 echo ""
@@ -283,7 +291,7 @@ echo "2. Inicie o backend:"
 echo "   cd $PROJ_DIR && source venv/bin/activate && python main.py"
 echo ""
 echo "3. Em outro terminal, inicie o frontend:"
-echo "   cd $PROJ_DIR/frontend && npm start"
+echo "   cd $PROJ_DIR/frontend && npm run dev"
 echo ""
 echo "4. Acesse: http://localhost:3000"
 echo ""
