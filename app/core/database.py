@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -82,5 +86,6 @@ def run_migrations():
             try:
                 conn.execute(text(sql))
                 conn.commit()
-            except Exception:
+            except Exception as e:
                 conn.rollback()  # necessário no PostgreSQL após erro em transação
+                logger.warning("Migration skipped or failed — %s | SQL: %s", e, sql[:120])
