@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { instancesApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,76 @@ import { Button } from '@/components/ui/button'
 import { Trash2, Plus, RefreshCw, Wifi, WifiOff, AlertCircle, Pencil, QrCode, X, Mail, CheckCircle2, Smartphone } from 'lucide-react'
 import type { Instance } from '@/types'
 
-function QrCodeModal({ instanceName, qrcode, onClose }: { instanceName: string; qrcode: string; onClose: () => void }) {
+const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
+const STATUS_CHECK_INTERVAL = 5_000 // 5s — verifica se conectou
+
+function QrCodeModal({
+  instanceId,
+  instanceName,
+  initialQrcode,
+  onClose,
+  onConnected,
+}: {
+  instanceId: number
+  instanceName: string
+  initialQrcode: string
+  onClose: () => void
+  onConnected?: () => void
+}) {
+  const [qrcode, setQrcode] = useState(initialQrcode)
+  const [refreshing, setRefreshing] = useState(false)
+  const [connected, setConnected] = useState(false)
+  const [countdown, setCountdown] = useState(QR_REFRESH_INTERVAL / 1000)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchQr = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const result = await instancesApi.getQrCode(instanceId)
+      if (result.qrcode) {
+        setQrcode(result.qrcode)
+        setCountdown(QR_REFRESH_INTERVAL / 1000)
+      }
+    } catch {
+      // QR indisponível — pode já estar conectado
+    } finally {
+      setRefreshing(false)
+    }
+  }, [instanceId])
+
+  // Auto-refresh do QR Code
+  useEffect(() => {
+    if (connected) return
+    intervalRef.current = setInterval(fetchQr, QR_REFRESH_INTERVAL)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [fetchQr, connected])
+
+  // Countdown visual
+  useEffect(() => {
+    if (connected) return
+    const tick = setInterval(() => {
+      setCountdown(c => (c > 1 ? c - 1 : QR_REFRESH_INTERVAL / 1000))
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [connected])
+
+  // Verifica status de conexão
+  useEffect(() => {
+    if (connected) return
+    const check = setInterval(async () => {
+      try {
+        const status = await instancesApi.checkStatus(instanceId)
+        if (status.state === 'open') {
+          setConnected(true)
+          if (intervalRef.current) clearInterval(intervalRef.current)
+          onConnected?.()
+          setTimeout(onClose, 2500)
+        }
+      } catch { /* ignore */ }
+    }, STATUS_CHECK_INTERVAL)
+    return () => clearInterval(check)
+  }, [instanceId, connected, onClose, onConnected])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -20,17 +89,52 @@ function QrCodeModal({ instanceName, qrcode, onClose }: { instanceName: string; 
           <X className="w-4 h-4" />
         </button>
         <div className="text-center">
-          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Conectar WhatsApp</p>
+          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            {connected ? 'WhatsApp Conectado!' : 'Conectar WhatsApp'}
+          </p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 font-mono">{instanceName}</p>
         </div>
-        <img
-          src={qrcode}
-          alt="QR Code WhatsApp"
-          className="w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700"
-        />
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
-          Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo
-        </p>
+
+        {connected ? (
+          <div className="w-64 h-64 rounded-xl border border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 flex flex-col items-center justify-center gap-3">
+            <CheckCircle2 className="w-16 h-16 text-emerald-500" />
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Conectado com sucesso</p>
+          </div>
+        ) : (
+          <div className="relative">
+            <img
+              src={qrcode}
+              alt="QR Code WhatsApp"
+              className={`w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 transition-opacity ${refreshing ? 'opacity-40' : ''}`}
+            />
+            {refreshing && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <RefreshCw className="w-8 h-8 text-zinc-500 animate-spin" />
+              </div>
+            )}
+          </div>
+        )}
+
+        {!connected && (
+          <div className="w-full space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                Atualiza em {countdown}s
+              </p>
+              <button
+                onClick={fetchQr}
+                disabled={refreshing}
+                className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+                Atualizar agora
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
+              Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -72,7 +176,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
     phone_number: inst.phone_number ?? '',
     owner_email: inst.owner_email ?? '',
   })
-  const [qrcode, setQrcode] = useState<string | null>(null)
+  const [qrModal, setQrModal] = useState<{ qrcode: string } | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const [qrError, setQrError] = useState<string | null>(null)
   const [emailSending, setEmailSending] = useState(false)
@@ -98,7 +202,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
     setQrError(null)
     try {
       const result = await instancesApi.getQrCode(inst.id)
-      setQrcode(result.qrcode)
+      setQrModal({ qrcode: result.qrcode })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? 'Não foi possível obter o QR Code.'
@@ -179,11 +283,13 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
 
   return (
     <>
-      {qrcode && (
+      {qrModal && (
         <QrCodeModal
+          instanceId={inst.id}
           instanceName={inst.instance_name}
-          qrcode={qrcode}
-          onClose={() => setQrcode(null)}
+          initialQrcode={qrModal.qrcode}
+          onClose={() => setQrModal(null)}
+          onConnected={() => setStatus({ state: 'open' })}
         />
       )}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-2">
@@ -262,7 +368,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
             {updateEvolutionResult.qrcode && (
               <button
                 type="button"
-                onClick={() => setQrcode(updateEvolutionResult.qrcode!)}
+                onClick={() => setQrModal({ qrcode: updateEvolutionResult.qrcode! })}
                 className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
               >
                 <QrCode className="w-3 h-3" /> Ver QR Code
@@ -296,7 +402,7 @@ export default function InstancesPage() {
   const [instForm, setInstForm] = useState({
     name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '',
   })
-  const [newInstQrcode, setNewInstQrcode] = useState<{ instanceName: string; qrcode: string } | null>(null)
+  const [newInstQrcode, setNewInstQrcode] = useState<{ instanceId: number; instanceName: string; qrcode: string } | null>(null)
 
   const createInstance = useMutation({
     mutationFn: instancesApi.create,
@@ -304,7 +410,7 @@ export default function InstancesPage() {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
       setInstForm({ name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '' })
       if (data.qrcode) {
-        setNewInstQrcode({ instanceName: data.instance_name, qrcode: data.qrcode })
+        setNewInstQrcode({ instanceId: data.id, instanceName: data.instance_name, qrcode: data.qrcode })
       }
     },
   })
@@ -326,8 +432,9 @@ export default function InstancesPage() {
     <>
       {newInstQrcode && (
         <QrCodeModal
+          instanceId={newInstQrcode.instanceId}
           instanceName={newInstQrcode.instanceName}
-          qrcode={newInstQrcode.qrcode}
+          initialQrcode={newInstQrcode.qrcode}
           onClose={() => setNewInstQrcode(null)}
         />
       )}

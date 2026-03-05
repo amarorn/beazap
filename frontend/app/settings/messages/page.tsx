@@ -1,31 +1,66 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { quickRepliesApi, instancesApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Trash2, Plus, Zap, GripVertical, MessageSquare, Bot } from 'lucide-react'
+import { Trash2, Plus, Zap, GripVertical, MessageSquare, Bot, CheckCircle2, AlertCircle } from 'lucide-react'
 
 export default function MessagesPage() {
   const queryClient = useQueryClient()
-
-  const { data: quickReplies = [] } = useQuery({
-    queryKey: ['quick-replies'],
-    queryFn: quickRepliesApi.list,
-  })
 
   const { data: instances = [] } = useQuery({
     queryKey: ['instances'],
     queryFn: instancesApi.list,
   })
 
+  const { data: quickReplies = [] } = useQuery({
+    queryKey: ['quick-replies'],
+    queryFn: quickRepliesApi.list,
+  })
+
+  // Auto message state
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('')
+  const [autoEnabled, setAutoEnabled] = useState(false)
+  const [autoText, setAutoText] = useState('')
+  const [saveResult, setSaveResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  // Pre-select first instance
+  useEffect(() => {
+    if (instances.length > 0 && !selectedInstanceId) {
+      setSelectedInstanceId(String(instances[0].id))
+    }
+  }, [instances, selectedInstanceId])
+
+  // Load auto message config when instance changes
+  const { data: autoMsgConfig, isLoading: loadingConfig } = useQuery({
+    queryKey: ['auto-message', selectedInstanceId],
+    queryFn: () => instancesApi.getAutoMessage(Number(selectedInstanceId)),
+    enabled: !!selectedInstanceId,
+  })
+
+  useEffect(() => {
+    if (autoMsgConfig) {
+      setAutoEnabled(autoMsgConfig.enabled)
+      setAutoText(autoMsgConfig.text)
+    }
+  }, [autoMsgConfig])
+
+  const saveAutoMessage = useMutation({
+    mutationFn: () => instancesApi.setAutoMessage(Number(selectedInstanceId), { enabled: autoEnabled, text: autoText }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auto-message', selectedInstanceId] })
+      setSaveResult({ ok: true, msg: 'Mensagem inicial salva com sucesso.' })
+      setTimeout(() => setSaveResult(null), 3000)
+    },
+    onError: () => setSaveResult({ ok: false, msg: 'Erro ao salvar. Tente novamente.' }),
+  })
+
+  // Quick replies
   const [qrForm, setQrForm] = useState({ title: '', text: '' })
   const [editingQr, setEditingQr] = useState<{ id: number; title: string; text: string } | null>(null)
-
-  // Auto initial message state (per instance)
-  const [autoMsgForm, setAutoMsgForm] = useState({ instance_id: '', message: '', enabled: true })
 
   const createQr = useMutation({
     mutationFn: quickRepliesApi.create,
@@ -34,7 +69,6 @@ export default function MessagesPage() {
       setQrForm({ title: '', text: '' })
     },
   })
-
   const updateQr = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { title?: string; text?: string } }) =>
       quickRepliesApi.update(id, data),
@@ -43,7 +77,6 @@ export default function MessagesPage() {
       setEditingQr(null)
     },
   })
-
   const deleteQr = useMutation({
     mutationFn: quickRepliesApi.delete,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quick-replies'] }),
@@ -63,10 +96,16 @@ export default function MessagesPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Configure uma mensagem enviada automaticamente quando um novo contato iniciar uma conversa.
+            Enviada automaticamente quando um novo contato iniciar uma conversa. Use{' '}
+            <code className="px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-blue-600 dark:text-blue-400 text-xs font-mono">{'{nome_atendente}'}</code>{' '}
+            para incluir o nome do atendente responsável.
           </p>
+
           <div className="space-y-2.5">
-            <Select value={autoMsgForm.instance_id} onValueChange={v => setAutoMsgForm(f => ({ ...f, instance_id: v }))}>
+            <Select
+              value={selectedInstanceId}
+              onValueChange={v => { setSelectedInstanceId(v); setSaveResult(null) }}
+            >
               <SelectTrigger className="text-sm h-9">
                 <SelectValue placeholder="Selecione a instância" />
               </SelectTrigger>
@@ -76,40 +115,52 @@ export default function MessagesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <textarea
-              placeholder="Olá! Bem-vindo. Em breve um atendente irá te ajudar. 😊"
-              value={autoMsgForm.message}
-              onChange={e => setAutoMsgForm(f => ({ ...f, message: e.target.value }))}
-              rows={4}
-              className={`${inputClass} resize-none`}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setAutoMsgForm(f => ({ ...f, enabled: !f.enabled }))}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  autoMsgForm.enabled ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
-                }`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                  autoMsgForm.enabled ? 'translate-x-4' : 'translate-x-1'
-                }`} />
-              </button>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                {autoMsgForm.enabled ? 'Ativado' : 'Desativado'}
-              </span>
-            </div>
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={!autoMsgForm.instance_id || !autoMsgForm.message.trim()}
-              onClick={() => {
-                // TODO: persist via API when backend endpoint is ready
-                alert('Funcionalidade em implementação — configuração salva localmente.')
-              }}
-            >
-              <MessageSquare className="w-4 h-4 mr-1.5" />
-              Salvar Mensagem Inicial
-            </Button>
+
+            {selectedInstanceId && (
+              <>
+                <textarea
+                  placeholder="Olá! Sou {nome_atendente} e irei te atender em breve. 😊"
+                  value={autoText}
+                  onChange={e => setAutoText(e.target.value)}
+                  rows={4}
+                  disabled={loadingConfig}
+                  className={`${inputClass} resize-none disabled:opacity-50`}
+                />
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAutoEnabled(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      autoEnabled ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
+                    }`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                      autoEnabled ? 'translate-x-4' : 'translate-x-1'
+                    }`} />
+                  </button>
+                  <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                    {autoEnabled ? 'Ativado' : 'Desativado'}
+                  </span>
+                </div>
+
+                {saveResult && (
+                  <p className={`text-xs flex items-center gap-1.5 ${saveResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                    {saveResult.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                    {saveResult.msg}
+                  </p>
+                )}
+
+                <Button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={saveAutoMessage.isPending || !selectedInstanceId}
+                  onClick={() => saveAutoMessage.mutate()}
+                >
+                  <MessageSquare className="w-4 h-4 mr-1.5" />
+                  {saveAutoMessage.isPending ? 'Salvando...' : 'Salvar Mensagem Inicial'}
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -172,16 +223,12 @@ export default function MessagesPage() {
                     <button
                       onClick={() => setEditingQr({ id: qr.id, title: qr.title, text: qr.text })}
                       className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors p-1"
-                      title="Editar"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
-                    <button
-                      onClick={() => deleteQr.mutate(qr.id)}
-                      className="text-zinc-400 hover:text-red-500 transition-colors p-1"
-                    >
+                    <button onClick={() => deleteQr.mutate(qr.id)} className="text-zinc-400 hover:text-red-500 transition-colors p-1">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>

@@ -167,12 +167,26 @@ export const instancesApi = {
     api.get<{ state: string; error?: string; api_url?: string; instance_name?: string }>(`/api/instances/${id}/status`).then(r => r.data),
   getQrCode: (id: number) =>
     api.get<{ qrcode: string }>(`/api/instances/${id}/qrcode`).then(r => r.data),
-  configureWebhook: (id: number, server_url: string) =>
-    api.post<{ status: string; webhook_url: string }>(`/api/instances/${id}/webhook`, { server_url }).then(r => r.data),
+  configureWebhook: (
+    id: number,
+    data: {
+      server_url: string
+      webhook_by_events?: boolean
+      webhook_base64?: boolean
+      events?: string[]
+    }
+  ) =>
+    api
+      .post<{ status: string; webhook_url: string }>(`/api/instances/${id}/webhook`, data)
+      .then(r => r.data),
   getWebhook: (id: number) =>
     api.get<{ url?: string; events?: string[] }>(`/api/instances/${id}/webhook`).then(r => r.data),
   sendQrCodeEmail: (id: number, email?: string) =>
     api.post<{ status: string; email: string }>(`/api/instances/${id}/send-qrcode-email`, email ? { email } : {}).then(r => r.data),
+  getAutoMessage: (id: number) =>
+    api.get<{ enabled: boolean; text: string }>(`/api/instances/${id}/auto-message`).then(r => r.data),
+  setAutoMessage: (id: number, data: { enabled: boolean; text: string }) =>
+    api.put<{ enabled: boolean; text: string }>(`/api/instances/${id}/auto-message`, data).then(r => r.data),
 }
 
 export const attendantsApi = {

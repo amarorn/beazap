@@ -32,6 +32,10 @@ EVENT_PATH_TO_EVENT = {
     "remove-instance": "remove.instance",
     "call": "call",
     "send-message": "send.message",
+    "labels-association": "labels.association",
+    "labels-edit": "labels.edit",
+    "typebot-change-status": "typebot.change.status",
+    "typebot-start": "typebot.start",
 }
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -49,10 +53,12 @@ async def _handle_webhook_body(
     db: Session,
 ):
     if event == "messages.upsert":
-        new_ids = webhook_service.process_message_upsert(db, instance_name, body.get("data"))
+        new_ids, auto_messages = webhook_service.process_message_upsert(db, instance_name, body.get("data"))
         await broadcast({"type": "new_message", "instance": instance_name})
         for cid in new_ids:
             background_tasks.add_task(route_conversation, cid)
+        for api_url, api_key, inst_name, phone, text in auto_messages:
+            background_tasks.add_task(webhook_service.send_auto_message_task, api_url, api_key, inst_name, phone, text)
 
         # Check inbound messages for Databricks keyword trigger
         instance_obj = db.query(Instance).filter(Instance.instance_name == instance_name).first()

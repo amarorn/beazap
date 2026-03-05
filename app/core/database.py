@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -74,11 +78,14 @@ def run_migrations():
         f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} send_error_reply BOOLEAN DEFAULT TRUE",
         f"ALTER TABLE databricks_configs ADD COLUMN {if_not_exists} reply_example VARCHAR(300)",
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} owner_email VARCHAR(255)",
+        f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_enabled BOOLEAN DEFAULT FALSE",
+        f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_text TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
             try:
                 conn.execute(text(sql))
                 conn.commit()
-            except Exception:
+            except Exception as e:
                 conn.rollback()  # necessário no PostgreSQL após erro em transação
+                logger.warning("Migration skipped or failed — %s | SQL: %s", e, sql[:120])

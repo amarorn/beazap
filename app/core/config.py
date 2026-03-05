@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     WEBHOOK_SECRET: str = ""
 
+    CORS_ORIGINS: str = ""  # Origens extras separadas por virgula (ex: https://app.ngrok.io)
+
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

@@ -132,8 +132,21 @@ async def set_instance_webhook(
     if not server_url:
         raise HTTPException(status_code=400, detail="server_url é obrigatório")
     webhook_url = f"{server_url}/webhook/{instance.instance_name}"
+    webhook_by_events = payload.get("webhook_by_events", False)
+    webhook_base64 = payload.get("webhook_base64", False)
+    events = payload.get("events")
+    if events is not None and len(events) == 0:
+        events = None
     try:
-        result = await configure_webhook(instance.api_url, instance.api_key, instance.instance_name, webhook_url)
+        result = await configure_webhook(
+            instance.api_url,
+            instance.api_key,
+            instance.instance_name,
+            webhook_url,
+            webhook_by_events=webhook_by_events,
+            webhook_base64=webhook_base64,
+            events=events,
+        )
         return {"status": "ok", "webhook_url": webhook_url, "result": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erro ao configurar webhook na Evolution API: {e}")
@@ -238,6 +251,25 @@ async def update_instance(instance_id: int, payload: InstanceUpdate, db: Session
         "evolution_error": evolution_error,
         "qrcode": qrcode,
     }
+
+
+@router.get("/instances/{instance_id}/auto-message")
+def get_auto_message(instance_id: int, db: Session = Depends(get_db)):
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    return {"enabled": instance.auto_message_enabled, "text": instance.auto_message_text or ""}
+
+
+@router.put("/instances/{instance_id}/auto-message")
+def set_auto_message(instance_id: int, payload: dict, db: Session = Depends(get_db)):
+    instance = db.query(Instance).filter(Instance.id == instance_id, Instance.active == True).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instância não encontrada")
+    instance.auto_message_enabled = bool(payload.get("enabled", False))
+    instance.auto_message_text = payload.get("text") or None
+    db.commit()
+    return {"enabled": instance.auto_message_enabled, "text": instance.auto_message_text or ""}
 
 
 @router.delete("/instances/{instance_id}")

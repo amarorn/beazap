@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.core.database import Base
@@ -15,6 +15,8 @@ class Instance(Base):
     active = Column(Boolean, default=True)
     phone_number = Column(String(30), nullable=True)
     owner_email = Column(String(255), nullable=True)
+    auto_message_enabled = Column(Boolean, default=False, nullable=False)
+    auto_message_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
