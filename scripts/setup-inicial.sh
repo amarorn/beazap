@@ -93,12 +93,19 @@ if [[ "$SKIP_DOCKER" != "true" ]]; then
     echo "  Docker ja instalado: $(docker --version)"
   else
     if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
-      run apt-get install -y -qq docker.io docker-compose-plugin
+      run apt-get install -y -qq ca-certificates curl gnupg
+      run install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/${OS_ID}/gpg | run gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      run chmod a+r /etc/apt/keyrings/docker.gpg
+      DOCKER_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-$VERSION_ID}")
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS_ID} ${DOCKER_CODENAME} stable" | run tee /etc/apt/sources.list.d/docker.list > /dev/null
+      run apt-get update -qq
+      run apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
       run systemctl enable docker
       run systemctl start docker
       if [[ $EUID -ne 0 ]] && ! groups | grep -q docker; then
         run usermod -aG docker "$USER"
-        echo "  Usuario $USER adicionado ao grupo docker. Faça logout/login ou execute: newgrp docker"
+        echo "  Usuario $USER adicionado ao grupo docker. Faca logout/login ou execute: newgrp docker"
       fi
     elif [[ "$OS_ID" == "centos" ]] || [[ "$OS_ID" == "rhel" ]] || [[ "$OS_ID" == "rocky" ]]; then
       run yum install -y -q yum-utils
