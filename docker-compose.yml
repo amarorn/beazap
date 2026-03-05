@@ -78,6 +78,12 @@ services:
     container_name: beazap-evolution-manager
     ports:
       - "8081:80"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        for f in /etc/nginx/conf.d/*.conf; do [ -f "$$f" ] && sed -i 's/ must-revalidate//g' "$$f"; done
+        exec nginx -g "daemon off;"
     networks:
       - beazap-net
     restart: unless-stopped
