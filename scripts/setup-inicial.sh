@@ -225,14 +225,21 @@ if [[ "$SKIP_PYTHON" != "true" ]] && [[ -f "$PROJ_DIR/requirements.txt" ]]; then
   if [[ "$OS_ID" == "ubuntu" ]] || [[ "$OS_ID" == "debian" ]]; then
     run apt-get install -y -qq python3-venv 2>/dev/null || run apt-get install -y -qq python3.11-venv 2>/dev/null || true
   fi
-  if [[ -d venv ]] && ! "$PROJ_DIR/venv/bin/python3" -c "import sys" 2>/dev/null; then
+  if [[ -d venv ]] && [[ ! -f venv/bin/activate ]]; then
     rm -rf venv
   fi
-  if [[ ! -d venv ]]; then
-    python3 -m venv venv
+  if [[ -d venv ]] && ! venv/bin/python3 -c "import sys" 2>/dev/null; then
+    rm -rf venv
+  fi
+  if [[ ! -d venv ]] || [[ ! -f venv/bin/activate ]]; then
+    echo "  Criando venv..."
+    if ! python3 -m venv venv; then
+      echo "Erro ao criar venv. Verifique: apt install python3.11-venv"
+      exit 1
+    fi
   fi
   if [[ ! -f venv/bin/activate ]]; then
-    echo "Erro: venv nao foi criado corretamente. Execute: python3 -m venv venv"
+    echo "Erro: venv/bin/activate nao encontrado apos criacao."
     exit 1
   fi
   source "$PROJ_DIR/venv/bin/activate"
