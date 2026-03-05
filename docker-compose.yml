@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     container_name: beazap-postgres
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: evolution123
@@ -49,7 +49,7 @@ services:
 
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@host.docker.internal:5433/evolution
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@host.docker.internal:5434/evolution
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "true"
