@@ -14,8 +14,8 @@ async def create_evolution_instance(api_url: str, api_key: str, instance_name: s
     payload = {"instanceName": instance_name, "integration": "WHATSAPP-BAILEYS", "qrcode": True}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(url, json=payload, headers={"apikey": api_key})
-        if resp.status_code in (400, 409):
-            # Instance may already exist — caller will try get_qrcode() separately
+        if resp.status_code in (400, 403, 409):
+            # 403 = "name already in use"; 400/409 = instance exists
             return {"_already_exists": True, "_status": resp.status_code, "_detail": resp.text}
         resp.raise_for_status()
         return resp.json()
