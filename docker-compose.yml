@@ -45,7 +45,7 @@ services:
       redis:
         condition: service_started
     environment:
-      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://104.237.9.71:8080}
       AUTHENTICATION_API_KEY: beazap-secret-2026
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
 
@@ -75,6 +75,9 @@ services:
 
       LOG_LEVEL: ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
       LOG_COLOR: "true"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - evolution_instances:/evolution/instances
     networks:
