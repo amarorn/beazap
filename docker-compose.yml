@@ -83,6 +83,8 @@ services:
     networks:
       - beazap-net
     restart: unless-stopped
+    # DESCOMENTAR se DNS ainda falhar (usa rede do host diretamente):
+    # network_mode: host
 
   evolution-manager:
     image: evoapicloud/evolution-manager:v2.3.5
