@@ -11,6 +11,19 @@ import type { Instance } from '@/types'
 const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
 const STATUS_CHECK_INTERVAL = 5_000 // 5s — verifica se conectou
 
+const RECOMMENDED_EVENTS = [
+  'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE',
+  'MESSAGES_DELETE',
+  'CALL',
+  'QRCODE_UPDATED',
+  'CONNECTION_UPDATE',
+  'GROUPS_UPSERT',
+  'GROUP_UPDATE',
+  'GROUP_PARTICIPANTS_UPDATE',
+  'SEND_MESSAGE',
+]
+
 function toQrDataUrl(value: string): string {
   if (!value?.trim()) return ''
   const s = value.trim()
@@ -425,14 +438,30 @@ export default function InstancesPage() {
     name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '',
   })
   const [newInstQrcode, setNewInstQrcode] = useState<{ instanceId: number; instanceName: string; qrcode: string } | null>(null)
+  const [webhookAutoResult, setWebhookAutoResult] = useState<{ ok: boolean; url?: string } | null>(null)
 
   const createInstance = useMutation({
     mutationFn: instancesApi.create,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
       setInstForm({ name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '' })
       if (data.qrcode) {
         setNewInstQrcode({ instanceId: data.id, instanceName: data.instance_name, qrcode: data.qrcode })
+      }
+      // Auto-configura webhook com todos os eventos recomendados
+      try {
+        const serverUrl =
+          (typeof window !== 'undefined' && localStorage.getItem('webhook_server_url')) ||
+          (typeof window !== 'undefined'
+            ? `${window.location.protocol}//${window.location.hostname}:8000`
+            : 'http://localhost:8000')
+        const res = await instancesApi.configureWebhook(data.id, {
+          server_url: serverUrl,
+          events: RECOMMENDED_EVENTS,
+        })
+        setWebhookAutoResult({ ok: true, url: res.webhook_url })
+      } catch {
+        setWebhookAutoResult({ ok: false })
       }
     },
   })
@@ -558,6 +587,18 @@ export default function InstancesPage() {
                 {createInstance.data?.email_sent === false && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                     <Mail className="w-3 h-3 flex-shrink-0" /> Falha ao enviar email. Verifique as configurações SMTP.
+                  </p>
+                )}
+                {webhookAutoResult?.ok && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                    Webhook configurado automaticamente ({RECOMMENDED_EVENTS.length} eventos).
+                  </p>
+                )}
+                {webhookAutoResult && !webhookAutoResult.ok && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                    Webhook não configurado. Configure manualmente em Webhooks.
                   </p>
                 )}
               </div>
