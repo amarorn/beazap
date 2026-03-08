@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case
 from datetime import datetime, timedelta
+import re
 from typing import List, Optional
 
 from app.models.conversation import Conversation, ConversationStatus
@@ -946,8 +947,10 @@ async def send_message_to_conversation(db: Session, conversation_id: int, text: 
     phone_raw = (conv.contact_phone or "").split("@")[0].split(":")[0]
     if not phone_raw:
         return {"error": "Número do contato inválido"}
-    suffix = "@g.us" if conv.is_group else "@s.whatsapp.net"
-    phone_jid = f"{phone_raw}{suffix}"
+    phone_digits = re.sub(r"\D+", "", phone_raw)
+    if not phone_digits:
+        return {"error": "Número do contato inválido"}
+    phone_jid = f"{phone_digits}@g.us" if conv.is_group else phone_digits
 
     url = f"{instance.api_url.rstrip('/')}/message/sendText/{instance.instance_name}"
     headers = {"apikey": instance.api_key, "Content-Type": "application/json"}
