@@ -1,3 +1,4 @@
+from pydantic import Extra
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = Extra.ignore
 
 
 @lru_cache()

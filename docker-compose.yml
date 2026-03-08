@@ -45,7 +45,7 @@ services:
       redis:
         condition: service_started
     environment:
-      SERVER_URL: http://localhost:8080
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
       AUTHENTICATION_API_KEY: beazap-secret-2026
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
 
@@ -70,6 +70,8 @@ services:
       QRCODE_LIMIT: 30
       QRCODE_COLOR: "#198754"
       CONFIG_SESSION_PHONE_VERSION: "2.3000.1033846690"
+      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
+      CONFIG_SESSION_PHONE_NAME: "Chrome"
 
       LOG_LEVEL: ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
       LOG_COLOR: "true"
