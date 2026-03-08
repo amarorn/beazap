@@ -418,8 +418,11 @@ export default function InstancesPage() {
     queryFn: instancesApi.list,
   })
 
+  const DEFAULT_API_URL = 'http://localhost:8080'
+  const DEFAULT_API_KEY = 'beazap-secret-2026'
+
   const [instForm, setInstForm] = useState({
-    name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '',
+    name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '',
   })
   const [newInstQrcode, setNewInstQrcode] = useState<{ instanceId: number; instanceName: string; qrcode: string } | null>(null)
 
@@ -427,7 +430,7 @@ export default function InstancesPage() {
     mutationFn: instancesApi.create,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-      setInstForm({ name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '' })
+      setInstForm({ name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '' })
       if (data.qrcode) {
         setNewInstQrcode({ instanceId: data.id, instanceName: data.instance_name, qrcode: data.qrcode })
       }
@@ -480,22 +483,24 @@ export default function InstancesPage() {
 
           <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2.5">
             <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Nova Instância</p>
-            {[
-              { key: 'name', placeholder: 'Nome (ex: Suporte)' },
-              { key: 'instance_name', placeholder: 'Instance name (Evolution API)' },
-              { key: 'api_url', placeholder: 'URL da API (ex: http://localhost:8080)' },
-              { key: 'api_key', placeholder: 'API Key' },
-              { key: 'phone_number', placeholder: 'Telefone (opcional)' },
-            ].map(({ key, placeholder }) => (
-              <input
-                key={key}
-                type="text"
-                placeholder={placeholder}
-                value={instForm[key as keyof typeof instForm]}
-                onChange={e => setInstForm(f => ({ ...f, [key]: e.target.value }))}
-                className={inputClass}
-              />
-            ))}
+            <input
+              type="text"
+              placeholder="Nome (ex: Suporte)"
+              value={instForm.name}
+              onChange={e => {
+                const name = e.target.value
+                const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                setInstForm(f => ({ ...f, name, instance_name: slug }))
+              }}
+              className={inputClass}
+            />
+            <input
+              type="text"
+              placeholder="Telefone (opcional)"
+              value={instForm.phone_number}
+              onChange={e => setInstForm(f => ({ ...f, phone_number: e.target.value }))}
+              className={inputClass}
+            />
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
               <input
@@ -516,7 +521,7 @@ export default function InstancesPage() {
                 phone_number: instForm.phone_number || undefined,
                 owner_email: instForm.owner_email || undefined,
               })}
-              disabled={createInstance.isPending || !instForm.name || !instForm.instance_name || !instForm.api_url || !instForm.api_key}
+              disabled={createInstance.isPending || !instForm.name}
             >
               <Plus className="w-4 h-4 mr-1.5" />
               {createInstance.isPending ? 'Criando...' : 'Adicionar Instância'}
