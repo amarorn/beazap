@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     container_name: beazap-postgres
     ports:
-      - "5432:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: evolution123
@@ -12,7 +12,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh:ro
     networks:
-      - beazap-net
+      beazap-net:
+        aliases:
+          - postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U evolution"]
       interval: 5s
@@ -22,6 +24,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: beazap-redis
+    ports:
+      - "6381:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -33,19 +37,21 @@ services:
     container_name: beazap-evolution
     ports:
       - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
     environment:
-      SERVER_URL: http://localhost:8080
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://104.237.9.71:8080}
       AUTHENTICATION_API_KEY: beazap-secret-2026
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
 
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@postgres:5432/evolution
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@host.docker.internal:5434/evolution
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "true"
@@ -55,7 +61,7 @@ services:
       DATABASE_SAVE_DATA_HISTORIC: "true"
 
       CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis:6379/1
+      CACHE_REDIS_URI: redis://host.docker.internal:6381/1
       CACHE_REDIS_PREFIX_KEY: evolution
       CACHE_REDIS_SAVE_INSTANCES: "false"
       CACHE_LOCAL_ENABLED: "false"
@@ -64,11 +70,33 @@ services:
       QRCODE_LIMIT: 30
       QRCODE_COLOR: "#198754"
       CONFIG_SESSION_PHONE_VERSION: "2.3000.1033846690"
+      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
+      CONFIG_SESSION_PHONE_NAME: "Chrome"
 
       LOG_LEVEL: ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
       LOG_COLOR: "true"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - evolution_instances:/evolution/instances
+    networks:
+      - beazap-net
+    restart: unless-stopped
+    # DESCOMENTAR se DNS ainda falhar (usa rede do host diretamente):
+    # network_mode: host
+
+  evolution-manager:
+    image: evoapicloud/evolution-manager:v2.3.5
+    container_name: beazap-evolution-manager
+    ports:
+      - "8081:80"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        for f in /etc/nginx/conf.d/*.conf; do [ -f "$$f" ] && sed -i 's/ must-revalidate//g' "$$f"; done
+        exec nginx -g "daemon off;"
     networks:
       - beazap-net
     restart: unless-stopped

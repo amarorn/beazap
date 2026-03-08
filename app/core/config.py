@@ -1,3 +1,4 @@
+from pydantic import Extra
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     EVOLUTION_API_KEY: str = ""
 
     ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
+    OPENAI_API_KEY: str = "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"
     LLM_PROVIDER: str = "openai"  # "anthropic" ou "openai"
 
     WEBHOOK_SECRET: str = ""
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = Extra.ignore
 
 
 @lru_cache()

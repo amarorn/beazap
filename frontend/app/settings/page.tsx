@@ -11,6 +11,26 @@ import type { Instance } from '@/types'
 const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
 const STATUS_CHECK_INTERVAL = 5_000 // 5s — verifica se conectou
 
+const RECOMMENDED_EVENTS = [
+  'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE',
+  'MESSAGES_DELETE',
+  'CALL',
+  'QRCODE_UPDATED',
+  'CONNECTION_UPDATE',
+  'GROUPS_UPSERT',
+  'GROUP_UPDATE',
+  'GROUP_PARTICIPANTS_UPDATE',
+  'SEND_MESSAGE',
+]
+
+function toQrDataUrl(value: string): string {
+  if (!value?.trim()) return ''
+  const s = value.trim()
+  if (s.startsWith('data:')) return s
+  return `data:image/png;base64,${s}`
+}
+
 function QrCodeModal({
   instanceId,
   instanceName,
@@ -24,7 +44,8 @@ function QrCodeModal({
   onClose: () => void
   onConnected?: () => void
 }) {
-  const [qrcode, setQrcode] = useState(initialQrcode)
+  const [qrcode, setQrcode] = useState(() => toQrDataUrl(initialQrcode))
+  const [imgError, setImgError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [connected, setConnected] = useState(false)
   const [countdown, setCountdown] = useState(QR_REFRESH_INTERVAL / 1000)
@@ -35,7 +56,8 @@ function QrCodeModal({
     try {
       const result = await instancesApi.getQrCode(instanceId)
       if (result.qrcode) {
-        setQrcode(result.qrcode)
+        setQrcode(toQrDataUrl(result.qrcode))
+        setImgError(false)
         setCountdown(QR_REFRESH_INTERVAL / 1000)
       }
     } catch {
@@ -102,11 +124,21 @@ function QrCodeModal({
           </div>
         ) : (
           <div className="relative">
-            <img
-              src={qrcode}
-              alt="QR Code WhatsApp"
-              className={`w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 transition-opacity ${refreshing ? 'opacity-40' : ''}`}
-            />
+            {imgError || !qrcode ? (
+              <div className="w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center gap-2 p-4">
+                <AlertCircle className="w-10 h-10 text-amber-500" />
+                <p className="text-xs text-center text-zinc-600 dark:text-zinc-400">
+                  QR Code indisponível ou imagem inválida. Tente atualizar.
+                </p>
+              </div>
+            ) : (
+              <img
+                src={qrcode}
+                alt="QR Code WhatsApp"
+                className={`w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 transition-opacity ${refreshing ? 'opacity-40' : ''}`}
+                onError={() => setImgError(true)}
+              />
+            )}
             {refreshing && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <RefreshCw className="w-8 h-8 text-zinc-500 animate-spin" />
@@ -202,7 +234,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
     setQrError(null)
     try {
       const result = await instancesApi.getQrCode(inst.id)
-      setQrModal({ qrcode: result.qrcode })
+      setQrModal({ qrcode: toQrDataUrl(result.qrcode) })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? 'Não foi possível obter o QR Code.'
@@ -368,7 +400,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
             {updateEvolutionResult.qrcode && (
               <button
                 type="button"
-                onClick={() => setQrModal({ qrcode: updateEvolutionResult.qrcode! })}
+                onClick={() => setQrModal({ qrcode: toQrDataUrl(updateEvolutionResult.qrcode!) })}
                 className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
               >
                 <QrCode className="w-3 h-3" /> Ver QR Code
@@ -399,18 +431,37 @@ export default function InstancesPage() {
     queryFn: instancesApi.list,
   })
 
+  const DEFAULT_API_URL = 'http://localhost:8080'
+  const DEFAULT_API_KEY = 'beazap-secret-2026'
+
   const [instForm, setInstForm] = useState({
-    name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '',
+    name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '',
   })
   const [newInstQrcode, setNewInstQrcode] = useState<{ instanceId: number; instanceName: string; qrcode: string } | null>(null)
+  const [webhookAutoResult, setWebhookAutoResult] = useState<{ ok: boolean; url?: string } | null>(null)
 
   const createInstance = useMutation({
     mutationFn: instancesApi.create,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-      setInstForm({ name: '', instance_name: '', api_url: '', api_key: '', phone_number: '', owner_email: '' })
+      setInstForm({ name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '' })
       if (data.qrcode) {
         setNewInstQrcode({ instanceId: data.id, instanceName: data.instance_name, qrcode: data.qrcode })
+      }
+      // Auto-configura webhook com todos os eventos recomendados
+      try {
+        const serverUrl =
+          (typeof window !== 'undefined' && localStorage.getItem('webhook_server_url')) ||
+          (typeof window !== 'undefined'
+            ? `${window.location.protocol}//${window.location.hostname}:8000`
+            : 'http://localhost:8000')
+        const res = await instancesApi.configureWebhook(data.id, {
+          server_url: serverUrl,
+          events: RECOMMENDED_EVENTS,
+        })
+        setWebhookAutoResult({ ok: true, url: res.webhook_url })
+      } catch {
+        setWebhookAutoResult({ ok: false })
       }
     },
   })
@@ -461,22 +512,24 @@ export default function InstancesPage() {
 
           <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2.5">
             <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Nova Instância</p>
-            {[
-              { key: 'name', placeholder: 'Nome (ex: Suporte)' },
-              { key: 'instance_name', placeholder: 'Instance name (Evolution API)' },
-              { key: 'api_url', placeholder: 'URL da API (ex: http://localhost:8080)' },
-              { key: 'api_key', placeholder: 'API Key' },
-              { key: 'phone_number', placeholder: 'Telefone (opcional)' },
-            ].map(({ key, placeholder }) => (
-              <input
-                key={key}
-                type="text"
-                placeholder={placeholder}
-                value={instForm[key as keyof typeof instForm]}
-                onChange={e => setInstForm(f => ({ ...f, [key]: e.target.value }))}
-                className={inputClass}
-              />
-            ))}
+            <input
+              type="text"
+              placeholder="Nome (ex: Suporte)"
+              value={instForm.name}
+              onChange={e => {
+                const name = e.target.value
+                const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                setInstForm(f => ({ ...f, name, instance_name: slug }))
+              }}
+              className={inputClass}
+            />
+            <input
+              type="text"
+              placeholder="Telefone (opcional)"
+              value={instForm.phone_number}
+              onChange={e => setInstForm(f => ({ ...f, phone_number: e.target.value }))}
+              className={inputClass}
+            />
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
               <input
@@ -497,7 +550,7 @@ export default function InstancesPage() {
                 phone_number: instForm.phone_number || undefined,
                 owner_email: instForm.owner_email || undefined,
               })}
-              disabled={createInstance.isPending || !instForm.name || !instForm.instance_name || !instForm.api_url || !instForm.api_key}
+              disabled={createInstance.isPending || !instForm.name}
             >
               <Plus className="w-4 h-4 mr-1.5" />
               {createInstance.isPending ? 'Criando...' : 'Adicionar Instância'}
@@ -534,6 +587,18 @@ export default function InstancesPage() {
                 {createInstance.data?.email_sent === false && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                     <Mail className="w-3 h-3 flex-shrink-0" /> Falha ao enviar email. Verifique as configurações SMTP.
+                  </p>
+                )}
+                {webhookAutoResult?.ok && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                    Webhook configurado automaticamente ({RECOMMENDED_EVENTS.length} eventos).
+                  </p>
+                )}
+                {webhookAutoResult && !webhookAutoResult.ok && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                    Webhook não configurado. Configure manualmente em Webhooks.
                   </p>
                 )}
               </div>
