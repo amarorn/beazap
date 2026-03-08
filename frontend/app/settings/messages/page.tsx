@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { quickRepliesApi, instancesApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,35 +23,24 @@ export default function MessagesPage() {
 
   // Auto message state
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('')
-  const [autoEnabled, setAutoEnabled] = useState(false)
-  const [autoText, setAutoText] = useState('')
+  const [autoDraft, setAutoDraft] = useState<{ enabled?: boolean; text?: string }>({})
   const [saveResult, setSaveResult] = useState<{ ok: boolean; msg: string } | null>(null)
-
-  // Pre-select first instance
-  useEffect(() => {
-    if (instances.length > 0 && !selectedInstanceId) {
-      setSelectedInstanceId(String(instances[0].id))
-    }
-  }, [instances, selectedInstanceId])
+  const effectiveInstanceId = selectedInstanceId || (instances[0]?.id ? String(instances[0].id) : '')
 
   // Load auto message config when instance changes
   const { data: autoMsgConfig, isLoading: loadingConfig } = useQuery({
-    queryKey: ['auto-message', selectedInstanceId],
-    queryFn: () => instancesApi.getAutoMessage(Number(selectedInstanceId)),
-    enabled: !!selectedInstanceId,
+    queryKey: ['auto-message', effectiveInstanceId],
+    queryFn: () => instancesApi.getAutoMessage(Number(effectiveInstanceId)),
+    enabled: !!effectiveInstanceId,
   })
 
-  useEffect(() => {
-    if (autoMsgConfig) {
-      setAutoEnabled(autoMsgConfig.enabled)
-      setAutoText(autoMsgConfig.text)
-    }
-  }, [autoMsgConfig])
+  const autoEnabled = autoDraft.enabled ?? autoMsgConfig?.enabled ?? false
+  const autoText = autoDraft.text ?? autoMsgConfig?.text ?? ''
 
   const saveAutoMessage = useMutation({
-    mutationFn: () => instancesApi.setAutoMessage(Number(selectedInstanceId), { enabled: autoEnabled, text: autoText }),
+    mutationFn: () => instancesApi.setAutoMessage(Number(effectiveInstanceId), { enabled: autoEnabled, text: autoText }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auto-message', selectedInstanceId] })
+      queryClient.invalidateQueries({ queryKey: ['auto-message', effectiveInstanceId] })
       setSaveResult({ ok: true, msg: 'Mensagem inicial salva com sucesso.' })
       setTimeout(() => setSaveResult(null), 3000)
     },
@@ -103,8 +92,8 @@ export default function MessagesPage() {
 
           <div className="space-y-2.5">
             <Select
-              value={selectedInstanceId}
-              onValueChange={v => { setSelectedInstanceId(v); setSaveResult(null) }}
+              value={effectiveInstanceId}
+              onValueChange={v => { setSelectedInstanceId(v); setSaveResult(null); setAutoDraft({}) }}
             >
               <SelectTrigger className="text-sm h-9">
                 <SelectValue placeholder="Selecione a instância" />
@@ -116,12 +105,12 @@ export default function MessagesPage() {
               </SelectContent>
             </Select>
 
-            {selectedInstanceId && (
+            {effectiveInstanceId && (
               <>
                 <textarea
                   placeholder="Olá! Sou {nome_atendente} e irei te atender em breve. 😊"
                   value={autoText}
-                  onChange={e => setAutoText(e.target.value)}
+                  onChange={e => setAutoDraft(prev => ({ ...prev, text: e.target.value }))}
                   rows={4}
                   disabled={loadingConfig}
                   className={`${inputClass} resize-none disabled:opacity-50`}
@@ -130,7 +119,7 @@ export default function MessagesPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setAutoEnabled(v => !v)}
+                    onClick={() => setAutoDraft(prev => ({ ...prev, enabled: !autoEnabled }))}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       autoEnabled ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
                     }`}
@@ -153,7 +142,7 @@ export default function MessagesPage() {
 
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={saveAutoMessage.isPending || !selectedInstanceId}
+                  disabled={saveAutoMessage.isPending || !effectiveInstanceId}
                   onClick={() => saveAutoMessage.mutate()}
                 >
                   <MessageSquare className="w-4 h-4 mr-1.5" />

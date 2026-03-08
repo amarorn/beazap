@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Body, Depends, Query, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -20,6 +20,13 @@ class AssignBody(BaseModel):
 
 class SendMessageBody(BaseModel):
     text: str
+
+
+class ClassifyIntentBody(BaseModel):
+    customer_products: Optional[str] = ""
+    contract_value: Optional[str] = ""
+    customer_since: Optional[str] = ""
+
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -168,6 +175,49 @@ def get_suggestions(
     from app.services import suggestion_service
     suggestions = suggestion_service.generate_suggestions(conversation_id, company_tone)
     return {"suggestions": suggestions}
+
+
+@router.get("/conversations/{conversation_id}/draft")
+def get_draft(
+    conversation_id: int,
+    company_name: str = Query(default=""),
+    company_tone: str = Query(default=""),
+    relevant_policies: str = Query(default=""),
+    knowledge_base_context: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    """Gera rascunho completo de resposta com confidence e flags de revisão."""
+    from app.services import suggestion_service
+    result = suggestion_service.generate_draft_response(
+        conversation_id=conversation_id,
+        company_name=company_name,
+        company_tone=company_tone,
+        relevant_policies=relevant_policies,
+        knowledge_base_context=knowledge_base_context,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível gerar o rascunho.")
+    return result
+
+
+@router.post("/conversations/{conversation_id}/classify-intent")
+def classify_intent(
+    conversation_id: int,
+    body: ClassifyIntentBody | None = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    """Classifica a intenção da conversa e sugere roteamento."""
+    from app.services import intent_classification_service
+    payload = body if body is not None else ClassifyIntentBody()
+    result = intent_classification_service.classify_intent(
+        conversation_id=conversation_id,
+        customer_products=payload.customer_products or "",
+        contract_value=payload.contract_value or "",
+        customer_since=payload.customer_since or "",
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível classificar a intenção.")
+    return result
 
 
 @router.post("/conversations/{conversation_id}/analyze")

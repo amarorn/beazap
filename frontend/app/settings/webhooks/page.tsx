@@ -75,7 +75,12 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function WebhooksPage() {
-  const [serverUrl, setServerUrl] = useState('')
+  const [serverUrl, setServerUrl] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    const stored = localStorage.getItem('webhook_server_url')
+    if (stored) return stored
+    return `${window.location.protocol}//${window.location.hostname}:8000`
+  })
   const [webhookByEvents, setWebhookByEvents] = useState(false)
   const [webhookBase64, setWebhookBase64] = useState(false)
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set(DEFAULT_EVENTS))
@@ -85,30 +90,16 @@ export default function WebhooksPage() {
   >({})
 
   useEffect(() => {
-    const stored = localStorage.getItem('webhook_server_url')
-    if (stored) {
-      setServerUrl(stored)
-    } else if (typeof window !== 'undefined') {
-      // Auto-detecta o host do backend (mesmo hostname, porta 8000)
-      const defaultUrl = `${window.location.protocol}//${window.location.hostname}:8000`
-      setServerUrl(defaultUrl)
-      localStorage.setItem('webhook_server_url', defaultUrl)
-    }
-  }, [])
+    if (serverUrl) localStorage.setItem('webhook_server_url', serverUrl)
+  }, [serverUrl])
 
   const { data: instances = [] } = useQuery({
     queryKey: ['instances'],
     queryFn: instancesApi.list,
   })
 
-  // Seleciona a primeira instância automaticamente quando a lista carrega
-  useEffect(() => {
-    if (instances.length > 0 && selectedInstanceId === null) {
-      setSelectedInstanceId(instances[0].id)
-    }
-  }, [instances, selectedInstanceId])
-
-  const selectedInstance = instances.find(i => i.id === selectedInstanceId) ?? null
+  const effectiveInstanceId = selectedInstanceId ?? instances[0]?.id ?? null
+  const selectedInstance = instances.find(i => i.id === effectiveInstanceId) ?? null
   const base = serverUrl.replace(/\/$/, '')
   const webhookUrl = selectedInstance
     ? `${base}/webhook/${selectedInstance.instance_name}`
@@ -171,7 +162,7 @@ export default function WebhooksPage() {
                   type="button"
                   onClick={() => setSelectedInstanceId(inst.id)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    selectedInstanceId === inst.id
+                    effectiveInstanceId === inst.id
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600'
                   }`}
@@ -207,7 +198,6 @@ export default function WebhooksPage() {
               value={serverUrl}
               onChange={e => {
                 setServerUrl(e.target.value)
-                localStorage.setItem('webhook_server_url', e.target.value)
               }}
               className={`${inputClass} pl-8`}
             />
@@ -332,7 +322,7 @@ export default function WebhooksPage() {
                 <div
                   key={inst.id}
                   className={`rounded-lg border transition-colors p-2.5 space-y-1.5 ${
-                    selectedInstanceId === inst.id
+                    effectiveInstanceId === inst.id
                       ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
                       : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800'
                   }`}

@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from sqlalchemy import func
 
@@ -11,7 +12,46 @@ from app.models.message import Message, MessageDirection
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Você é um assistente de atendimento ao cliente para a empresa {company_name}.
+DRAFT_SYSTEM_PROMPT = """Você é um especialista em atendimento ao cliente da empresa {company_name}.
+
+BASE DE CONHECIMENTO DISPONÍVEL:
+{knowledge_base_context}
+
+PERFIL DA EMPRESA:
+- Tom de voz: {company_tone}
+- Políticas relevantes: {relevant_policies}"""
+
+DRAFT_USER_PROMPT_TEMPLATE = """CONVERSA COMPLETA:
+{full_conversation}
+
+ÚLTIMA MENSAGEM DO CLIENTE:
+{last_message}
+
+CLASSIFICAÇÃO DETECTADA: {detected_category}
+
+TAREFA:
+Gere um rascunho de resposta COMPLETO para o atendente enviar ao cliente.
+
+O rascunho deve:
+1. Resolver ou endereçar diretamente o problema/solicitação identificado
+2. Usar informações da base de conhecimento quando relevante (cite a fonte internamente com [KB])
+3. Incluir próximos passos claros quando aplicável
+4. Ter no máximo 4 frases
+5. Manter o tom de voz da empresa
+
+Responda EXCLUSIVAMENTE no seguinte formato JSON:
+{{
+  "draft": "...",
+  "confidence_score": 0.0,
+  "knowledge_sources_used": ["..."],
+  "requires_human_review": true/false,
+  "review_reason": "..."
+}}
+
+REGRA: Se confidence_score < 0.7, defina requires_human_review = true."""
+
+SYSTEM_PROMPT = """Você é um assistente especializado em atendimento ao cliente via WhatsApp da empresa {company_name}.
+Gere sugestões de resposta curtas, naturais e no tom indicado.
 Retorne APENAS um objeto JSON válido, sem markdown, sem explicações."""
 
 USER_PROMPT_TEMPLATE = """PERFIL DO CLIENTE:
@@ -117,6 +157,161 @@ def _parse_suggestions(raw: str) -> list[dict]:
         elif s:
             result.append({"text": str(s), "tone_used": "", "adaptation_reason": ""})
     return result
+
+
+def _parse_draft(raw: str) -> dict[str, Any]:
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    data = json.loads(raw.strip())
+    return {
+        "draft": data.get("draft", ""),
+        "confidence_score": float(data.get("confidence_score", 0.0)),
+        "knowledge_sources_used": data.get("knowledge_sources_used", []),
+        "requires_human_review": data.get("requires_human_review", True),
+        "review_reason": data.get("review_reason", ""),
+    }
+
+
+def _call_anthropic_draft(
+    full_conversation: str,
+    last_message: str,
+    detected_category: str,
+    company_name: str,
+    company_tone: str,
+    relevant_policies: str,
+    knowledge_base_context: str,
+) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    system = DRAFT_SYSTEM_PROMPT.format(
+        company_name=company_name,
+        knowledge_base_context=knowledge_base_context or "(Nenhuma base de conhecimento disponível)",
+        company_tone=company_tone or "profissional e cordial",
+        relevant_policies=relevant_policies or "Não especificadas",
+    )
+    user_content = DRAFT_USER_PROMPT_TEMPLATE.format(
+        full_conversation=full_conversation,
+        last_message=last_message or "(Sem última mensagem)",
+        detected_category=detected_category or "outro",
+    )
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=512,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    return response.content[0].text.strip()
+
+
+def _call_openai_draft(
+    full_conversation: str,
+    last_message: str,
+    detected_category: str,
+    company_name: str,
+    company_tone: str,
+    relevant_policies: str,
+    knowledge_base_context: str,
+) -> str:
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    system = DRAFT_SYSTEM_PROMPT.format(
+        company_name=company_name,
+        knowledge_base_context=knowledge_base_context or "(Nenhuma base de conhecimento disponível)",
+        company_tone=company_tone or "profissional e cordial",
+        relevant_policies=relevant_policies or "Não especificadas",
+    )
+    user_content = DRAFT_USER_PROMPT_TEMPLATE.format(
+        full_conversation=full_conversation,
+        last_message=last_message or "(Sem última mensagem)",
+        detected_category=detected_category or "outro",
+    )
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_tokens=512,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+
+def generate_draft_response(
+    conversation_id: int,
+    company_name: str = "",
+    company_tone: str = "",
+    relevant_policies: str = "",
+    knowledge_base_context: str = "",
+) -> dict[str, Any] | None:
+    """Gera rascunho completo de resposta com confidence e flags de revisão."""
+    provider = settings.LLM_PROVIDER.lower()
+    if provider == "openai" and not settings.OPENAI_API_KEY:
+        logger.warning("OPENAI_API_KEY não configurada — draft ignorado.")
+        return None
+    if provider == "anthropic" and not settings.ANTHROPIC_API_KEY:
+        logger.warning("ANTHROPIC_API_KEY não configurada — draft ignorado.")
+        return None
+    if provider not in ("anthropic", "openai"):
+        logger.warning(f"LLM_PROVIDER inválido: '{provider}'.")
+        return None
+
+    db = SessionLocal()
+    try:
+        conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        if not conv:
+            return None
+
+        messages = (
+            db.query(Message)
+            .filter(Message.conversation_id == conversation_id, Message.is_deleted == False)
+            .order_by(Message.timestamp.asc())
+            .limit(20)
+            .all()
+        )
+        full_conversation = _build_conversation_text(messages)
+        if not full_conversation.strip():
+            return None
+
+        last_inbound = next(
+            (m for m in reversed(messages) if m.direction == MessageDirection.inbound and m.content),
+            None,
+        )
+        last_message = last_inbound.content if last_inbound else ""
+        detected_category = conv.analysis_category or "outro"
+
+        if provider == "openai":
+            raw = _call_openai_draft(
+                full_conversation=full_conversation,
+                last_message=last_message,
+                detected_category=detected_category,
+                company_name=company_name or "Empresa",
+                company_tone=company_tone,
+                relevant_policies=relevant_policies,
+                knowledge_base_context=knowledge_base_context,
+            )
+        else:
+            raw = _call_anthropic_draft(
+                full_conversation=full_conversation,
+                last_message=last_message,
+                detected_category=detected_category,
+                company_name=company_name or "Empresa",
+                company_tone=company_tone,
+                relevant_policies=relevant_policies,
+                knowledge_base_context=knowledge_base_context,
+            )
+
+        return _parse_draft(raw)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao parsear JSON do draft da conversa {conversation_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao gerar draft para conversa {conversation_id}: {e}")
+        return None
+    finally:
+        db.close()
 
 
 def generate_suggestions(conversation_id: int, company_tone: str = "") -> list[dict]:
