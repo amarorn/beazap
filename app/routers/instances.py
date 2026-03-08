@@ -5,7 +5,13 @@ from app.core.database import get_db
 from app.models.instance import Instance
 from app.models.attendant import Attendant, AttendantRole
 from app.schemas.metrics import InstanceCreate, InstanceUpdate, AttendantCreate, AttendantUpdate
-from app.services.evolution_service import create_evolution_instance, get_qrcode, configure_webhook, get_webhook
+from app.services.evolution_service import (
+    create_evolution_instance,
+    get_qrcode,
+    configure_webhook,
+    get_webhook,
+    normalize_qrcode_base64,
+)
 from app.services.email_service import send_qrcode_email
 import httpx
 
@@ -48,11 +54,12 @@ async def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)
             evolution_error = f"Instância já existe na Evolution API (HTTP {result.get('_status')}). Tentando obter QR diretamente."
         else:
             evolution_created = True
-            # Some Evolution versions return the QR directly in the create response
-            qrcode = (
+            raw = (
                 (result.get("qrcode") or {}).get("base64")
                 or result.get("base64")
             )
+            if raw:
+                qrcode = normalize_qrcode_base64(raw)
     except Exception as e:
         evolution_error = str(e)
 
@@ -92,7 +99,14 @@ async def get_instance_qrcode(instance_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Instância não encontrada")
     qrcode = await get_qrcode(instance.api_url, instance.api_key, instance.instance_name)
     if not qrcode:
-        raise HTTPException(status_code=404, detail="QR Code não disponível. A instância pode já estar conectada ou a Evolution API está inacessível.")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "QR Code não disponível. Verifique: (1) URL da API na instância aponta para a Evolution no mesmo servidor "
+                "(ex: http://localhost:8080 ou http://beazap-evolution:8080); (2) a instância não está já conectada; "
+                "(3) logs do backend para detalhes."
+            ),
+        )
     return {"qrcode": qrcode}
 
 
@@ -109,7 +123,13 @@ async def send_qrcode_email_endpoint(instance_id: int, payload: dict = {}, db: S
 
     qrcode = await get_qrcode(instance.api_url, instance.api_key, instance.instance_name)
     if not qrcode:
-        raise HTTPException(status_code=404, detail="QR Code não disponível. A instância pode já estar conectada ou a Evolution API está inacessível.")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "QR Code não disponível. Verifique a URL da API da instância e se a Evolution está acessível. "
+                "Consulte os logs do backend."
+            ),
+        )
 
     sent = send_qrcode_email(to_email, instance.instance_name, qrcode)
     if not sent:
@@ -225,10 +245,12 @@ async def update_instance(instance_id: int, payload: InstanceUpdate, db: Session
                 evolution_error = f"Instância já existe na Evolution API (HTTP {result.get('_status')})."
             else:
                 evolution_created = True
-                qrcode = (
+                raw = (
                     (result.get("qrcode") or {}).get("base64")
                     or result.get("base64")
                 )
+                if raw:
+                    qrcode = normalize_qrcode_base64(raw)
         except Exception as e:
             evolution_error = str(e)
     if not qrcode and api_url and api_key and instance_name:
