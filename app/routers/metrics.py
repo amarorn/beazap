@@ -170,6 +170,29 @@ def get_suggestions(
     return {"suggestions": suggestions}
 
 
+@router.get("/conversations/{conversation_id}/draft")
+def get_draft(
+    conversation_id: int,
+    company_name: str = Query(default=""),
+    company_tone: str = Query(default=""),
+    relevant_policies: str = Query(default=""),
+    knowledge_base_context: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    """Gera rascunho completo de resposta com confidence e flags de revisão."""
+    from app.services import suggestion_service
+    result = suggestion_service.generate_draft_response(
+        conversation_id=conversation_id,
+        company_name=company_name,
+        company_tone=company_tone,
+        relevant_policies=relevant_policies,
+        knowledge_base_context=knowledge_base_context,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível gerar o rascunho.")
+    return result
+
+
 @router.post("/conversations/{conversation_id}/analyze")
 def analyze_conversation(
     conversation_id: int,
