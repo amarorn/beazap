@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Database, Play, RefreshCw, CheckCircle2, XCircle, Clock,
@@ -65,34 +65,42 @@ const inputCls = 'w-full text-sm border border-zinc-200 dark:border-white/[0.08]
 // Config Card
 // ---------------------------------------------------------------------------
 
+const BASE_FORM = {
+  workspace_url: '', api_token: '', job_id: '', trigger_keyword: '',
+  param_catalog: 'nazaria_dev', param_schema_name: 'nazaria_gold',
+  param_modo: 'cliente', param_output_path: '/dbfs/FileStore/relatorios/relatorio.pdf',
+  client_code_regex: '\\d+',
+  client_code_min_length: '', client_code_max_length: '',
+  send_error_reply: true, reply_example: '',
+}
+
+type ConfigForm = typeof BASE_FORM
+
 function ConfigCard({ onSaved }: { onSaved: () => void }) {
   const { data: config, isLoading } = useQuery({ queryKey: ['databricks-config'], queryFn: databricksApi.getConfig })
   const qc = useQueryClient()
 
-  const [form, setForm] = useState({
-    workspace_url: '', api_token: '', job_id: '', trigger_keyword: '',
-    param_catalog: 'nazaria_dev', param_schema_name: 'nazaria_gold',
-    param_modo: 'cliente', param_output_path: '/dbfs/FileStore/relatorios/relatorio.pdf',
-    client_code_regex: '\\d+',
-    client_code_min_length: '', client_code_max_length: '',
-    send_error_reply: true, reply_example: '',
-  })
-  const [showToken, setShowToken] = useState(false)
+  const configDefaults: Partial<ConfigForm> = config
+    ? {
+        workspace_url: config.workspace_url,
+        job_id: config.job_id,
+        trigger_keyword: config.trigger_keyword,
+        param_catalog: config.param_catalog,
+        param_schema_name: config.param_schema_name,
+        param_modo: config.param_modo,
+        param_output_path: config.param_output_path,
+        client_code_regex: config.client_code_regex,
+        client_code_min_length: config.client_code_min_length?.toString() ?? '',
+        client_code_max_length: config.client_code_max_length?.toString() ?? '',
+        send_error_reply: config.send_error_reply,
+        reply_example: config.reply_example ?? '',
+        api_token: '',
+      }
+    : {}
 
-  useEffect(() => {
-    if (config) setForm(f => ({
-      ...f,
-      workspace_url: config.workspace_url, job_id: config.job_id,
-      trigger_keyword: config.trigger_keyword, param_catalog: config.param_catalog,
-      param_schema_name: config.param_schema_name, param_modo: config.param_modo,
-      param_output_path: config.param_output_path, client_code_regex: config.client_code_regex,
-      client_code_min_length: config.client_code_min_length?.toString() ?? '',
-      client_code_max_length: config.client_code_max_length?.toString() ?? '',
-      send_error_reply: config.send_error_reply,
-      reply_example: config.reply_example ?? '',
-      api_token: '',
-    }))
-  }, [config])
+  const [draft, setDraft] = useState<Partial<ConfigForm>>({})
+  const form: ConfigForm = { ...BASE_FORM, ...configDefaults, ...draft }
+  const [showToken, setShowToken] = useState(false)
 
   const save = useMutation({
     mutationFn: () => databricksApi.saveConfig({
@@ -107,8 +115,8 @@ function ConfigCard({ onSaved }: { onSaved: () => void }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['databricks-config'] }); onSaved() },
   })
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(p => ({ ...p, [key]: e.target.value }))
+  const set = (key: keyof ConfigForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft(p => ({ ...p, [key]: e.target.value }))
 
   if (isLoading) return <Card><CardContent className="p-6 flex items-center gap-2 text-sm text-zinc-400"><Loader2 className="w-4 h-4 animate-spin" />Carregando...</CardContent></Card>
 
@@ -193,7 +201,7 @@ function ConfigCard({ onSaved }: { onSaved: () => void }) {
           </p>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.send_error_reply}
-              onChange={e => setForm(p => ({ ...p, send_error_reply: e.target.checked }))}
+              onChange={e => setDraft(p => ({ ...p, send_error_reply: e.target.checked }))}
               className="w-4 h-4 rounded accent-emerald-500" />
             <span className="text-xs text-zinc-600 dark:text-zinc-300">Avisar o usuário quando os dados estiverem errados ou faltando</span>
           </label>
@@ -375,7 +383,7 @@ function TriggerCard({ onTriggered }: { onTriggered: () => void }) {
           )}
           {v && !v.keyword_found && message.trim() && (
             <p className="text-[11px] text-zinc-400 text-center mt-2">
-              Inclua a keyword <span className="font-mono text-zinc-600 dark:text-zinc-300">"{config?.trigger_keyword}"</span> na mensagem.
+              Inclua a keyword <span className="font-mono text-zinc-600 dark:text-zinc-300">&quot;{config?.trigger_keyword}&quot;</span> na mensagem.
             </p>
           )}
         </div>

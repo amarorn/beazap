@@ -30,17 +30,15 @@ const navItems = [
 
 export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: SidebarProps) {
   const pathname = usePathname()
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  const { theme, resolvedTheme, setTheme } = useTheme()
+  const currentTheme = theme === 'system' ? resolvedTheme : theme
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const [slaThreshold, setSlaThreshold] = useState(30)
-  useEffect(() => {
+  const [slaThreshold, setSlaThreshold] = useState(() => {
+    if (typeof window === 'undefined') return 30
     const stored = localStorage.getItem('sla_threshold_minutes')
-    if (stored) setSlaThreshold(parseInt(stored, 10))
+    return stored ? parseInt(stored, 10) : 30
+  })
+  useEffect(() => {
     const handler = () => {
       const updated = localStorage.getItem('sla_threshold_minutes')
       if (updated) setSlaThreshold(parseInt(updated, 10))
@@ -145,13 +143,13 @@ export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: Sid
             <span className="text-xs text-zinc-500 dark:text-zinc-400">Sistema ativo</span>
           </div>
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => setTheme(currentTheme === 'dark' ? 'light' : 'dark')}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.08] transition-all text-xs"
             title="Alternar tema"
           >
-            {!mounted ? (
+            {!currentTheme ? (
               <span className="w-[52px] h-4" />
-            ) : theme === 'dark' ? (
+            ) : currentTheme === 'dark' ? (
               <><Sun className="w-3.5 h-3.5" /><span>Claro</span></>
             ) : (
               <><Moon className="w-3.5 h-3.5" /><span>Escuro</span></>
