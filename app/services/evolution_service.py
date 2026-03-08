@@ -15,13 +15,20 @@ async def create_evolution_instance(api_url: str, api_key: str, instance_name: s
     """
     url = f"{api_url.rstrip('/')}/instance/create"
     payload = {"instanceName": instance_name, "integration": "WHATSAPP-BAILEYS", "qrcode": True}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=payload, headers={"apikey": api_key})
-        if resp.status_code in (400, 403, 409):
-            # 403 = "name already in use"; 400/409 = instance exists
-            return {"_already_exists": True, "_status": resp.status_code, "_detail": resp.text}
-        resp.raise_for_status()
-        return resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, json=payload, headers={"apikey": api_key})
+    except httpx.ConnectError as e:
+        logger.warning("create_evolution_instance connect error api_url=%s: %s", api_url, e)
+        raise
+    if resp.status_code in (400, 403, 409):
+        return {"_already_exists": True, "_status": resp.status_code, "_detail": resp.text}
+    resp.raise_for_status()
+    data = resp.json()
+    # Evolution v2 pode retornar payload em "data"
+    if isinstance(data.get("data"), dict):
+        data = {**data, **data["data"]}
+    return data
 
 
 WEBHOOK_EVENTS_DEFAULT = [
@@ -153,35 +160,75 @@ def _qrcode_from_string(text: str) -> Optional[str]:
         return None
 
 
+def normalize_qrcode_base64(raw: str) -> str:
+    """Garante que o base64 retornado seja um data URL valido para <img src>."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if s.startswith("data:"):
+        return s
+    return f"data:image/png;base64,{s}"
+
+
 async def get_qrcode(api_url: str, api_key: str, instance_name: str) -> Optional[str]:
     """Fetches QR code base64 from Evolution API connect endpoint."""
     url = f"{api_url.rstrip('/')}/instance/connect/{instance_name}"
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(url, headers={"apikey": api_key})
-        if resp.status_code != 200:
-            logger.warning("get_qrcode HTTP %s instance=%s", resp.status_code, instance_name)
-            return None
-        data = resp.json()
-        # base64 direto (v1 ou alguns v2)
-        out = (
-            data.get("base64")
-            or (data.get("qrcode") or {}).get("base64")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(url, headers={"apikey": api_key})
+    except httpx.ConnectError as e:
+        logger.warning(
+            "get_qrcode connect error instance=%s api_url=%s: %s",
+            instance_name, api_url, e,
         )
-        if out:
-            out = (out or "").strip()
-            if not out.startswith("data:"):
-                out = f"data:image/png;base64,{out}"
-            return out
-        # v2: pairingCode + code (code = string para gerar QR)
-        code = data.get("code") or data.get("pairingCode")
-        if code:
-            out = _qrcode_from_string(code)
-            if out:
-                return out
-        if data.get("count") == 0:
-            logger.info(
-                "get_qrcode instance=%s: Evolution retornou count=0 (sem pairingCode/code). "
-                "Verifique SERVER_URL e CONFIG_SESSION_PHONE_* no docker-compose.",
-                instance_name,
-            )
         return None
+    except Exception as e:
+        logger.warning("get_qrcode error instance=%s: %s", instance_name, e)
+        return None
+
+    if resp.status_code != 200:
+        logger.warning(
+            "get_qrcode HTTP %s instance=%s body=%s",
+            resp.status_code, instance_name, (resp.text or "")[:300],
+        )
+        return None
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        logger.warning("get_qrcode invalid JSON instance=%s: %s", instance_name, e)
+        return None
+
+    # Evolution v2 pode enviar payload dentro de "data"
+    if isinstance(data.get("data"), dict):
+        data = {**data, **data["data"]}
+
+    # base64 direto (v1 ou alguns v2)
+    out = (
+        data.get("base64")
+        or (data.get("qrcode") or {}).get("base64")
+    )
+    if out:
+        out = normalize_qrcode_base64(out)
+        if out:
+            return out
+
+    # v2: pairingCode + code (string para gerar QR)
+    code = data.get("code") or data.get("pairingCode")
+    if code:
+        out = _qrcode_from_string(code)
+        if out:
+            return out
+
+    if data.get("count") == 0:
+        logger.info(
+            "get_qrcode instance=%s: Evolution retornou count=0 (sem pairingCode/code). "
+            "Verifique SERVER_URL e CONFIG_SESSION_PHONE_* no docker-compose.",
+            instance_name,
+        )
+    else:
+        logger.warning(
+            "get_qrcode instance=%s: resposta sem base64/code/pairingCode. keys=%s sample=%s",
+            instance_name, list(data.keys())[:15], str(data)[:400],
+        )
+    return None
