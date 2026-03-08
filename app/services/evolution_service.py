@@ -1,5 +1,8 @@
+import base64
+import io
 import logging
 import httpx
+import qrcode
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -133,17 +136,52 @@ def send_text_message(api_url: str, api_key: str, instance_name: str, phone: str
         return False
 
 
+def _qrcode_from_string(text: str) -> Optional[str]:
+    """Gera imagem QR em base64 a partir do texto (code/pairingCode da Evolution)."""
+    if not text or not isinstance(text, str) or len(text) < 4:
+        return None
+    try:
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#198754", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    except Exception as e:
+        logger.warning("qrcode_from_string failed: %s", e)
+        return None
+
+
 async def get_qrcode(api_url: str, api_key: str, instance_name: str) -> Optional[str]:
     """Fetches QR code base64 from Evolution API connect endpoint."""
     url = f"{api_url.rstrip('/')}/instance/connect/{instance_name}"
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(url, headers={"apikey": api_key})
-        if resp.status_code == 200:
-            data = resp.json()
-            # v2: {"base64": "data:image/png;base64,...", "code": "..."}
-            # v1: {"qrcode": {"base64": "..."}}
-            return (
-                data.get("base64")
-                or (data.get("qrcode") or {}).get("base64")
+        if resp.status_code != 200:
+            logger.warning("get_qrcode HTTP %s instance=%s", resp.status_code, instance_name)
+            return None
+        data = resp.json()
+        # base64 direto (v1 ou alguns v2)
+        out = (
+            data.get("base64")
+            or (data.get("qrcode") or {}).get("base64")
+        )
+        if out:
+            out = (out or "").strip()
+            if not out.startswith("data:"):
+                out = f"data:image/png;base64,{out}"
+            return out
+        # v2: pairingCode + code (code = string para gerar QR)
+        code = data.get("code") or data.get("pairingCode")
+        if code:
+            out = _qrcode_from_string(code)
+            if out:
+                return out
+        if data.get("count") == 0:
+            logger.info(
+                "get_qrcode instance=%s: Evolution retornou count=0 (sem pairingCode/code). "
+                "Verifique SERVER_URL e CONFIG_SESSION_PHONE_* no docker-compose.",
+                instance_name,
             )
-    return None
+        return None
