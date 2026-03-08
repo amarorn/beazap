@@ -11,6 +11,13 @@ import type { Instance } from '@/types'
 const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
 const STATUS_CHECK_INTERVAL = 5_000 // 5s — verifica se conectou
 
+function toQrDataUrl(value: string): string {
+  if (!value?.trim()) return ''
+  const s = value.trim()
+  if (s.startsWith('data:')) return s
+  return `data:image/png;base64,${s}`
+}
+
 function QrCodeModal({
   instanceId,
   instanceName,
@@ -24,7 +31,8 @@ function QrCodeModal({
   onClose: () => void
   onConnected?: () => void
 }) {
-  const [qrcode, setQrcode] = useState(initialQrcode)
+  const [qrcode, setQrcode] = useState(() => toQrDataUrl(initialQrcode))
+  const [imgError, setImgError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [connected, setConnected] = useState(false)
   const [countdown, setCountdown] = useState(QR_REFRESH_INTERVAL / 1000)
@@ -35,7 +43,8 @@ function QrCodeModal({
     try {
       const result = await instancesApi.getQrCode(instanceId)
       if (result.qrcode) {
-        setQrcode(result.qrcode)
+        setQrcode(toQrDataUrl(result.qrcode))
+        setImgError(false)
         setCountdown(QR_REFRESH_INTERVAL / 1000)
       }
     } catch {
@@ -102,11 +111,21 @@ function QrCodeModal({
           </div>
         ) : (
           <div className="relative">
-            <img
-              src={qrcode}
-              alt="QR Code WhatsApp"
-              className={`w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 transition-opacity ${refreshing ? 'opacity-40' : ''}`}
-            />
+            {imgError || !qrcode ? (
+              <div className="w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center gap-2 p-4">
+                <AlertCircle className="w-10 h-10 text-amber-500" />
+                <p className="text-xs text-center text-zinc-600 dark:text-zinc-400">
+                  QR Code indisponível ou imagem inválida. Tente atualizar.
+                </p>
+              </div>
+            ) : (
+              <img
+                src={qrcode}
+                alt="QR Code WhatsApp"
+                className={`w-64 h-64 rounded-xl border border-zinc-200 dark:border-zinc-700 transition-opacity ${refreshing ? 'opacity-40' : ''}`}
+                onError={() => setImgError(true)}
+              />
+            )}
             {refreshing && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <RefreshCw className="w-8 h-8 text-zinc-500 animate-spin" />
@@ -202,7 +221,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
     setQrError(null)
     try {
       const result = await instancesApi.getQrCode(inst.id)
-      setQrModal({ qrcode: result.qrcode })
+      setQrModal({ qrcode: toQrDataUrl(result.qrcode) })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? 'Não foi possível obter o QR Code.'
@@ -368,7 +387,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
             {updateEvolutionResult.qrcode && (
               <button
                 type="button"
-                onClick={() => setQrModal({ qrcode: updateEvolutionResult.qrcode! })}
+                onClick={() => setQrModal({ qrcode: toQrDataUrl(updateEvolutionResult.qrcode!) })}
                 className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
               >
                 <QrCode className="w-3 h-3" /> Ver QR Code
