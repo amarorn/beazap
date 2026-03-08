@@ -162,6 +162,6 @@ def analyze_conversation(conversation_id: int) -> None:
     except json.JSONDecodeError as e:
         logger.error(f"Erro ao parsear JSON da análise da conversa {conversation_id}: {e}")
     except Exception as e:
-        logger.error(f"Erro ao analisar conversa {conversation_id}: {e}")
+        logger.error(f"Erro ao analisar conversa {conversation_id}: {type(e).__name__}: {e}")
     finally:
         db.close()
