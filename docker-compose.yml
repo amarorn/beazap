@@ -86,21 +86,6 @@ services:
     # DESCOMENTAR se DNS ainda falhar (usa rede do host diretamente):
     # network_mode: host
 
-  evolution-manager:
-    image: evoapicloud/evolution-manager:v2.3.5
-    container_name: beazap-evolution-manager
-    ports:
-      - "8081:80"
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        for f in /etc/nginx/conf.d/*.conf; do [ -f "$$f" ] && sed -i 's/ must-revalidate//g' "$$f"; done
-        exec nginx -g "daemon off;"
-    networks:
-      - beazap-net
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   redis_data:
