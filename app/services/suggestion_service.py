@@ -12,9 +12,6 @@ from app.models.message import Message, MessageDirection
 
 logger = logging.getLogger(__name__)
 
-<<<<<<<<< Temporary merge branch 1
-SYSTEM_PROMPT = """Você é um assistente de atendimento ao cliente para a empresa {company_name}.
-=========
 DRAFT_SYSTEM_PROMPT = """Você é um especialista em atendimento ao cliente da empresa {company_name}.
 
 BASE DE CONHECIMENTO DISPONÍVEL:
@@ -55,7 +52,6 @@ REGRA: Se confidence_score < 0.7, defina requires_human_review = true."""
 
 SYSTEM_PROMPT = """Você é um assistente especializado em atendimento ao cliente via WhatsApp da empresa {company_name}.
 Gere sugestões de resposta curtas, naturais e no tom indicado.
->>>>>>>>> Temporary merge branch 2
 Retorne APENAS um objeto JSON válido, sem markdown, sem explicações."""
 
 USER_PROMPT_TEMPLATE = """PERFIL DO CLIENTE:
@@ -163,10 +159,6 @@ def _parse_suggestions(raw: str) -> list[dict]:
     return result
 
 
-<<<<<<<<< Temporary merge branch 1
-def generate_suggestions(conversation_id: int, company_tone: str = "") -> list[dict]:
-    """Gera sugestões de resposta para uma conversa usando LLM. Retorna lista de dicts com text, tone_used, adaptation_reason."""
-=========
 def _parse_draft(raw: str) -> dict[str, Any]:
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -322,9 +314,8 @@ def generate_draft_response(
         db.close()
 
 
-def generate_suggestions(conversation_id: int, company_tone: str = "") -> list[str]:
-    """Gera sugestões de resposta para uma conversa usando LLM."""
->>>>>>>>> Temporary merge branch 2
+def generate_suggestions(conversation_id: int, company_tone: str = "") -> list[dict]:
+    """Gera sugestões de resposta para uma conversa usando LLM. Retorna lista de dicts com text, tone_used, adaptation_reason."""
     provider = settings.LLM_PROVIDER.lower()
 
     if provider == "openai" and not settings.OPENAI_API_KEY:
