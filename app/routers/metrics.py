@@ -28,6 +28,25 @@ class ClassifyIntentBody(BaseModel):
     customer_since: Optional[str] = ""
 
 
+class AutomationClassifyBody(BaseModel):
+    mensagem_cliente: Optional[str] = None
+
+
+class GenerateResponseBody(BaseModel):
+    intencao_detectada: str
+    mensagem_cliente: str
+    parametros_pendentes: Optional[list[str]] = None
+
+
+class ConfirmActionBody(BaseModel):
+    intencao_detectada: str
+    entidades_coletadas: dict
+    status_execucao_acao: str
+    resultado_acao: Optional[str] = None
+    motivo_falha: Optional[str] = None
+    proximos_passos: Optional[str] = None
+
+
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
 
@@ -217,6 +236,54 @@ def classify_intent(
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Não foi possível classificar a intenção.")
+    return result
+
+
+@router.post("/conversations/{conversation_id}/automation/classify")
+def automation_classify_intent(
+    conversation_id: int,
+    body: AutomationClassifyBody | None = Body(default=None),
+):
+    """Classifica intenção para fluxo automático e determina se automação ou humano."""
+    from app.services import automation_flows_service
+    payload = body if body is not None else AutomationClassifyBody()
+    result = automation_flows_service.classify_intent_routing_from_conversation(
+        conversation_id=conversation_id,
+        mensagem_cliente=payload.mensagem_cliente,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível classificar a intenção.")
+    return result
+
+
+@router.post("/automation/generate-response")
+def automation_generate_response(body: GenerateResponseBody):
+    """Gera resposta automática e extrai entidades da mensagem."""
+    from app.services import automation_flows_service
+    result = automation_flows_service.generate_automated_response(
+        intencao_detectada=body.intencao_detectada,
+        mensagem_cliente=body.mensagem_cliente,
+        parametros_pendentes=body.parametros_pendentes,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível gerar a resposta.")
+    return result
+
+
+@router.post("/automation/confirm")
+def automation_confirm_action(body: ConfirmActionBody):
+    """Gera mensagem final após execução da ação (sucesso ou falha)."""
+    from app.services import automation_flows_service
+    result = automation_flows_service.generate_confirmation_message(
+        intencao_detectada=body.intencao_detectada,
+        entidades_coletadas=body.entidades_coletadas,
+        status_execucao_acao=body.status_execucao_acao,
+        resultado_acao=body.resultado_acao,
+        motivo_falha=body.motivo_falha,
+        proximos_passos=body.proximos_passos,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível gerar a mensagem.")
     return result
 
 
