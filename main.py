@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import create_tables, run_migrations
 from app.routers.webhook import router as webhook_router, root_router as webhook_root_router
-from app.routers import metrics, instances, dashboard, sse, teams, quick_replies, reports, databricks
+from app.routers import metrics, instances, dashboard, sse, teams, quick_replies, reports, databricks, translation
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.include_router(teams.router)
 app.include_router(quick_replies.router)
 app.include_router(reports.router)
 app.include_router(databricks.router)
+app.include_router(translation.router)
 
 
 if __name__ == "__main__":
