@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.services import metrics_service
 from app.services import analysis_service
+from app.services import churn_prediction_service
 
 
 class GroupConfigUpdate(BaseModel):
@@ -236,6 +237,29 @@ def analyze_conversation(
 @router.get("/analysis-stats")
 def analysis_stats(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
     return metrics_service.get_analysis_stats(db, instance_id)
+
+
+@router.get("/churn/predict")
+def predict_churn(
+    numero_cliente: str = Query(..., description="Numero de telefone do cliente"),
+    data_inicio: str = Query(..., description="Data inicio ISO (ex: 2024-03-01)"),
+    data_fim: str = Query(..., description="Data fim ISO (ex: 2024-03-31)"),
+    instance_id: Optional[int] = Query(default=None),
+    periodo_sentimento: int = Query(default=5, ge=1, le=20, description="Ultimas N conversas para analise de sentimento"),
+    dias_sentimento: int = Query(default=30, ge=7, le=90, description="Ultimos N dias para analise de sentimento"),
+):
+    """Avalia o risco de churn do cliente com base no historico de interacoes."""
+    result = churn_prediction_service.predict_churn(
+        numero_cliente=numero_cliente,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        instance_id=instance_id,
+        periodo_analise_sentimento=periodo_sentimento,
+        dias_analise_sentimento=dias_sentimento,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Nao foi possivel avaliar o risco de churn.")
+    return result
 
 
 @router.get("/groups/overview")
