@@ -165,6 +165,25 @@ export const metricsApi = {
       { params: { company_tone: companyTone } }
     ).then(r => r.data.suggestions),
 
+  getChurnPrediction: (params: {
+    numero_cliente: string
+    data_inicio: string
+    data_fim: string
+    instance_id?: number
+    periodo_sentimento?: number
+    dias_sentimento?: number
+  }) =>
+    api
+      .get<{
+        cliente_id: string
+        risco_churn: string
+        razoes: string[]
+        acoes_sugeridas: string[]
+        periodo: { inicio: string; fim: string }
+        metricas_utilizadas: Record<string, number>
+      }>('/api/metrics/churn/predict', { params })
+      .then(r => r.data),
+
   getEmergingTopics: (params: {
     data_inicio: string
     data_fim: string
