@@ -166,6 +166,35 @@ export const metricsApi = {
     ).then(r => r.data.suggestions),
 }
 
+export const translationApi = {
+  translateIncoming: (data: {
+    texto_original: string
+    idioma_destino?: string
+    idioma_destino_iso?: string
+    conversation_id?: number
+  }) =>
+    api
+      .post<{ idioma_detectado: string; texto_traduzido: string | null }>(
+        '/api/translation/incoming',
+        data
+      )
+      .then(r => r.data),
+
+  translateOutgoing: (data: {
+    texto_original: string
+    idioma_origem?: string
+    idioma_destino: string
+  }) =>
+    api
+      .post<{ texto_traduzido: string }>('/api/translation/outgoing', data)
+      .then(r => r.data),
+
+  getIdiomas: () =>
+    api
+      .get<{ idiomas: { codigo: string; nome: string }[] }>('/api/translation/idiomas')
+      .then(r => r.data),
+}
+
 export const instancesApi = {
   list: () => api.get<Instance[]>('/api/instances').then(r => r.data),
   create: (data: { name: string; instance_name: string; api_url: string; api_key: string; phone_number?: string; owner_email?: string }) =>
