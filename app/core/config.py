@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     EVOLUTION_API_URL: str = ""
     EVOLUTION_API_KEY: str = ""
+    # Opcional: URI do Postgres da Evolution (ex: postgresql://evolution:evolution123@localhost:5434/evolution)
+    # para registro automático de contatos LID no cache e retry de envio
+    EVOLUTION_DATABASE_URI: str = ""
 
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = "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"

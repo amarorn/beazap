@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { instancesApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Trash2, Plus, RefreshCw, Wifi, WifiOff, AlertCircle, Pencil, QrCode, X, Mail, CheckCircle2, Smartphone } from 'lucide-react'
+import { Trash2, Plus, RefreshCw, Wifi, WifiOff, AlertCircle, Pencil, QrCode, X, Mail, CheckCircle2, Smartphone, Sparkles } from 'lucide-react'
 import type { Instance } from '@/types'
 
 const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
@@ -423,6 +423,56 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
   )
 }
 
+function AiSettingsCard() {
+  const [companyTone, setCompanyTone] = useState(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('company_tone') ?? '') : ''
+  )
+  const [saved, setSaved] = useState(false)
+
+  function handleSave() {
+    localStorage.setItem('company_tone', companyTone)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const inputClass = "w-full text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+
+  return (
+    <Card className="border-zinc-100 dark:border-zinc-800 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base dark:text-zinc-100 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-emerald-500" />
+          Configurações de IA
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 block mb-1.5">
+            Tom de voz da empresa
+          </label>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mb-2">
+            Descreva o estilo e tom que o atendimento deve seguir. O assistente de IA usará isso ao gerar sugestões de resposta.
+          </p>
+          <textarea
+            rows={4}
+            placeholder="Ex: Somos uma empresa de tecnologia com atendimento ágil e descontraído. Use linguagem simples, evite jargões técnicos e sempre demonstre empatia."
+            value={companyTone}
+            onChange={e => { setCompanyTone(e.target.value); setSaved(false) }}
+            className={`${inputClass} resize-none`}
+          />
+        </div>
+        <Button
+          size="sm"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          onClick={handleSave}
+        >
+          {saved ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />Salvo</> : 'Salvar'}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function InstancesPage() {
   const queryClient = useQueryClient()
 
@@ -452,9 +502,7 @@ export default function InstancesPage() {
       try {
         const serverUrl =
           (typeof window !== 'undefined' && localStorage.getItem('webhook_server_url')) ||
-          (typeof window !== 'undefined'
-            ? `${window.location.protocol}//${window.location.hostname}:8000`
-            : 'http://localhost:8000')
+          'http://host.docker.internal:8000'
         const res = await instancesApi.configureWebhook(data.id, {
           server_url: serverUrl,
           events: RECOMMENDED_EVENTS,
@@ -606,6 +654,8 @@ export default function InstancesPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AiSettingsCard />
     </>
   )
 }

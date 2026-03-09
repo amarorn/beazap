@@ -11,6 +11,7 @@ import type {
   HourlyVolume,
   ConversationDetail,
   ConversationMessage,
+  Contact,
   CallLogEntry,
   AnalysisStats,
   GroupOverviewMetrics,
@@ -25,6 +26,10 @@ import type {
   DatabricksConfig,
   DatabricksJobRun,
   DatabricksValidation,
+  EmergingTopicsResult,
+  MetricAnomaliesResult,
+  SentimentAnomaliesResult,
+  ChurnPredictionResult,
 } from '@/types'
 
 function getApiBaseUrl(): string {
@@ -104,6 +109,24 @@ export const metricsApi = {
   resolveConversation: (id: number) =>
     api.post(`/api/metrics/conversations/${id}/resolve`).then(r => r.data),
 
+  setConversationSendJid: (id: number, send_jid: string) =>
+    api.patch(`/api/metrics/conversations/${id}/send-jid`, { send_jid }).then(r => r.data),
+
+  getConversationContactStatus: (conversationId: number) =>
+    api.get<{ saved: boolean; contact_id?: number }>(`/api/metrics/conversations/${conversationId}/contact-status`).then(r => r.data),
+
+  saveContactFromConversation: (conversationId: number) =>
+    api.post<{ contact_id: number; already_saved?: boolean }>(`/api/metrics/conversations/${conversationId}/save-contact`).then(r => r.data),
+
+  getContacts: (params?: { instance_id?: number; limit?: number; offset?: number }) =>
+    api.get<Contact[]>('/api/metrics/contacts', { params }).then(r => r.data),
+
+  updateContact: (id: number, data: { contact_name?: string; contact_phone?: string; contact_send_jid?: string }) =>
+    api.patch<Contact>(`/api/metrics/contacts/${id}`, data).then(r => r.data),
+
+  deleteContact: (id: number) =>
+    api.delete(`/api/metrics/contacts/${id}`).then(r => r.data),
+
   analyzeConversation: (id: number) =>
     api.post(`/api/metrics/conversations/${id}/analyze`).then(r => r.data),
 
@@ -148,6 +171,12 @@ export const metricsApi = {
   getNotes: (id: number) =>
     api.get<ConversationNote[]>(`/api/metrics/conversations/${id}/notes`).then(r => r.data),
 
+  getContextSummaries: (conversationId: number) =>
+    api.get<{ resolved_at: string | null; summary: string }[]>(`/api/metrics/conversations/${conversationId}/context-summaries`).then(r => r.data),
+
+  getConversationSummaries: (params?: { days?: number; instance_id?: number }) =>
+    api.get<import('@/types').ConversationSummaryItem[]>('/api/metrics/conversation-summaries', { params }).then(r => r.data),
+
   addNote: (id: number, content: string, author_name?: string) =>
     api.post<ConversationNote>(`/api/metrics/conversations/${id}/notes`, { content, author_name }).then(r => r.data),
 
@@ -160,7 +189,7 @@ export const metricsApi = {
     }).then(r => r.data),
 
   getSuggestions: (conversationId: number, companyTone: string) =>
-    api.get<{ suggestions: string[] }>(
+    api.get<{ suggestions: { text: string; tone_used: string; adaptation_reason: string }[] }>(
       `/api/metrics/conversations/${conversationId}/suggestions`,
       { params: { company_tone: companyTone } }
     ).then(r => r.data.suggestions),
@@ -316,4 +345,18 @@ export const reportsApi = {
     api.get<AttendantSummary[]>('/api/reports/attendant-summaries', { params }).then(r => r.data),
   debug: (instance_id?: number) =>
     api.get<Record<string, unknown>>('/api/reports/debug', { params: instance_id ? { instance_id } : {} }).then(r => r.data),
+}
+
+export const insightsApi = {
+  getEmergingTopics: (params: { data_inicio: string; data_fim: string; instance_id?: number }) =>
+    api.get<EmergingTopicsResult>('/api/metrics/trends/emerging-topics', { params }).then(r => r.data),
+
+  getMetricAnomalies: (params: { data_inicio: string; data_fim: string; categoria: string; instance_id?: number }) =>
+    api.get<MetricAnomaliesResult>('/api/metrics/trends/metric-anomalies', { params }).then(r => r.data),
+
+  getSentimentAnomalies: (params: { data_inicio: string; data_fim: string; contexto: string; tipo: string; instance_id?: number }) =>
+    api.get<SentimentAnomaliesResult>('/api/metrics/trends/sentiment-anomalies', { params }).then(r => r.data),
+
+  predictChurn: (params: { numero_cliente: string; data_inicio: string; data_fim: string; instance_id?: number }) =>
+    api.get<ChurnPredictionResult>('/api/metrics/churn/predict', { params }).then(r => r.data),
 }

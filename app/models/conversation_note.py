@@ -11,6 +11,7 @@ class ConversationNote(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
     author_name = Column(String(100), nullable=False, default="Agente")
     content = Column(Text, nullable=False)
+    note_type = Column(String(20), nullable=False, default="manual")  # manual | resumo_llm
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship("Conversation", back_populates="notes")

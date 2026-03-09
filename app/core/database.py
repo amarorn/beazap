@@ -32,7 +32,7 @@ def get_db():
 
 def create_tables():
     from app.models import instance, attendant, conversation, message, team  # noqa
-    from app.models import quick_reply, conversation_note, report  # noqa
+    from app.models import quick_reply, conversation_note, report, contact  # noqa
     from app.models import databricks  # noqa
     Base.metadata.create_all(bind=engine)
 
@@ -81,6 +81,9 @@ def run_migrations():
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_enabled BOOLEAN DEFAULT FALSE",
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_text TEXT",
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} client_language VARCHAR(10)",
+        f"ALTER TABLE conversations ADD COLUMN {if_not_exists} contact_jid VARCHAR(80)",
+        f"ALTER TABLE conversations ADD COLUMN {if_not_exists} contact_send_jid VARCHAR(80)",
+        f"ALTER TABLE conversation_notes ADD COLUMN {if_not_exists} note_type VARCHAR(20) DEFAULT 'manual'",
     ]
     with engine.connect() as conn:
         for sql in migrations:

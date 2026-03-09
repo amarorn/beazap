@@ -1,4 +1,5 @@
 import logging
+import re
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -103,6 +104,12 @@ def _normalize_phone(jid: str) -> str:
     return jid.split("@")[0].split(":")[0]
 
 
+def _digits_only(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    return re.sub(r"\D+", "", str(s).strip())
+
+
 def _get_or_create_conversation(
     db: Session,
     contact_phone: str,
@@ -112,6 +119,8 @@ def _get_or_create_conversation(
     now: datetime,
     is_group: bool = False,
     create_if_missing: bool = True,
+    contact_jid: Optional[str] = None,
+    contact_send_jid: Optional[str] = None,
 ) -> tuple:
     conv = (
         db.query(Conversation)
@@ -122,11 +131,31 @@ def _get_or_create_conversation(
         )
         .first()
     )
+    if not conv and contact_jid and contact_jid.endswith("@lid"):
+        conv = (
+            db.query(Conversation)
+            .filter(
+                Conversation.contact_jid == contact_jid,
+                Conversation.instance_id == instance_id,
+                Conversation.status == ConversationStatus.open,
+            )
+            .first()
+        )
+        if conv:
+            conv.contact_phone = contact_phone
+            if contact_send_jid:
+                conv.contact_send_jid = contact_send_jid
+            if contact_name and not conv.contact_name:
+                conv.contact_name = contact_name
+            conv.last_message_at = now
+            return conv, False
     if not conv:
         if not create_if_missing:
             return None, False
         conv = Conversation(
             contact_phone=contact_phone,
+            contact_jid=contact_jid,
+            contact_send_jid=contact_send_jid,
             contact_name=contact_name,
             instance_id=instance_id,
             attendant_id=attendant_id,
@@ -143,13 +172,17 @@ def _get_or_create_conversation(
             conv.contact_name = contact_name
         if attendant_id and not conv.attendant_id:
             conv.attendant_id = attendant_id
+        if contact_jid and not conv.contact_jid:
+            conv.contact_jid = contact_jid
+        if contact_send_jid and not conv.contact_send_jid:
+            conv.contact_send_jid = contact_send_jid
         conv.last_message_at = now
         return conv, False
 
 
 def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[List[int], List[Tuple[str, str, str, str, str]]]:
     """Returns (new_conversation_ids, auto_messages_to_send).
-    auto_messages_to_send: [(api_url, api_key, instance_name, contact_phone, msg_text), ...]
+    contact_phone = identificador do chat (numero ou parte do LID). Nao usar sender do body (e o numero da instancia).
     """
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
@@ -170,9 +203,18 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
         key = msg_data.get("key", {})
         evolution_id = key.get("id")
         remote_jid = key.get("remoteJid", "")
+        remote_jid_alt = key.get("remoteJidAlt", "").strip() or None
         from_me = key.get("fromMe", False)
 
         is_group = "@g.us" in remote_jid
+        contact_send_jid = None
+        if not is_group and remote_jid.endswith("@lid") and remote_jid_alt:
+            # Nao usar remoteJidAlt se for o numero da propria instancia (atendimento), nao do cliente
+            alt_digits = _digits_only(_normalize_phone(remote_jid_alt))
+            instance_phone_digits = _digits_only(instance.phone_number) if instance.phone_number else ""
+            if alt_digits and alt_digits != instance_phone_digits:
+                contact_send_jid = remote_jid_alt
+            # senao remoteJidAlt e o numero do atendimento, ignorar
 
         existing = db.query(Message).filter(Message.evolution_id == evolution_id).first()
         if existing:
@@ -220,6 +262,8 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             now=timestamp,
             is_group=is_group,
             create_if_missing=(direction == MessageDirection.inbound),
+            contact_jid=remote_jid,
+            contact_send_jid=contact_send_jid,
         )
 
         if conv is None:
@@ -231,11 +275,12 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             if instance.auto_message_enabled and instance.auto_message_text:
                 attendant_name = attendant.name if attendant else "Atendente"
                 msg_text = instance.auto_message_text.replace("{nome_atendente}", attendant_name)
+                send_jid = (conv.contact_send_jid or conv.contact_jid or remote_jid or contact_phone)
                 auto_messages_to_send.append((
                     instance.api_url,
                     instance.api_key,
                     instance.instance_name,
-                    contact_phone,
+                    send_jid,
                     msg_text,
                 ))
 

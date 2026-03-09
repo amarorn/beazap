@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users, Phone, UsersRound, UserCheck, BarChart3, Database } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Settings, Zap, Sun, Moon, Users, Phone, UsersRound, UserCheck, BarChart3, Database, Sparkles, Contact } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { metricsApi } from '@/lib/api'
 import type { Instance } from '@/types'
@@ -19,11 +19,13 @@ interface SidebarProps {
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/conversations', label: 'Atendimentos', icon: MessageSquare },
+  { href: '/contacts', label: 'Contatos', icon: Contact },
   { href: '/calls', label: 'Ligações', icon: Phone },
   { href: '/groups', label: 'Grupos', icon: Users },
   { href: '/teams', label: 'Equipes', icon: UsersRound },
   { href: '/attendants', label: 'Atendentes', icon: UserCheck },
   { href: '/reports', label: 'Relatórios', icon: BarChart3 },
+  { href: '/insights', label: 'Insights IA', icon: Sparkles },
   { href: '/databricks', label: 'Databricks', icon: Database },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ]
