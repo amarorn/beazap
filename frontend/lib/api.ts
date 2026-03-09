@@ -164,6 +164,69 @@ export const metricsApi = {
       `/api/metrics/conversations/${conversationId}/suggestions`,
       { params: { company_tone: companyTone } }
     ).then(r => r.data.suggestions),
+
+  getEmergingTopics: (params: {
+    data_inicio: string
+    data_fim: string
+    instance_id?: number
+  }) =>
+    api
+      .get<{
+        topicos_emergentes: Array<{
+          nome: string
+          descricao: string
+          exemplos_resumos: string[]
+        }>
+        periodo: { inicio: string; fim: string }
+      }>('/api/metrics/trends/emerging-topics', { params })
+      .then(r => r.data),
+
+  getMetricAnomalies: (params: {
+    data_inicio: string
+    data_fim: string
+    categoria: string
+    instance_id?: number
+  }) =>
+    api
+      .get<{
+        anomalias: Array<{
+          metrica: string
+          tipo: string
+          valor_atual: number
+          valor_historico: number
+          descricao: string
+          sugestao_causa_impacto: string
+        }>
+        periodo: { inicio: string; fim: string }
+        categoria: string
+        metricas_atual: Record<string, number>
+        metricas_historico: Record<string, number>
+      }>('/api/metrics/trends/metric-anomalies', { params })
+      .then(r => r.data),
+
+  getSentimentAnomalies: (params: {
+    data_inicio: string
+    data_fim: string
+    contexto: string
+    tipo: string
+    instance_id?: number
+  }) =>
+    api
+      .get<{
+        anomalias_sentimento: Array<{
+          contexto: string
+          tipo_contexto: string
+          mudanca_sentimento: string
+          descricao: string
+          implicacao_sugerida: string
+        }>
+        periodo: { inicio: string; fim: string }
+        contexto: string
+        tipo_contexto: string
+        distribuicao_atual: Record<string, number>
+        distribuicao_historica: Record<string, number>
+      }>('/api/metrics/trends/sentiment-anomalies', { params })
+      .then(r => r.data),
 }
 
 export const instancesApi = {
