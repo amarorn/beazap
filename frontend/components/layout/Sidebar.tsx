@@ -32,6 +32,8 @@ export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: Sid
   const pathname = usePathname()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const currentTheme = theme === 'system' ? resolvedTheme : theme
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   const [slaThreshold, setSlaThreshold] = useState(() => {
     if (typeof window === 'undefined') return 30
@@ -147,7 +149,7 @@ export function Sidebar({ instances, selectedInstanceId, onInstanceChange }: Sid
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.08] transition-all text-xs"
             title="Alternar tema"
           >
-            {!currentTheme ? (
+            {!mounted ? (
               <span className="w-[52px] h-4" />
             ) : currentTheme === 'dark' ? (
               <><Sun className="w-3.5 h-3.5" /><span>Claro</span></>
