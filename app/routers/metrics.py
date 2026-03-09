@@ -233,6 +233,19 @@ def analyze_conversation(
     return {"status": "analyzing"}
 
 
+@router.post("/conversations/{conversation_id}/feedback")
+def generate_conversation_feedback(conversation_id: int, db: Session = Depends(get_db)):
+    """Gera feedback estruturado sobre a performance do atendente na conversa."""
+    conv = metrics_service.get_conversation_detail(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    from app.services import conversation_feedback_service
+    result = conversation_feedback_service.generate_conversation_feedback(conversation_id)
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível gerar o feedback.")
+    return result
+
+
 @router.get("/analysis-stats")
 def analysis_stats(instance_id: Optional[int] = None, db: Session = Depends(get_db)):
     return metrics_service.get_analysis_stats(db, instance_id)
