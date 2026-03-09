@@ -103,6 +103,9 @@ class ConversationDetail(BaseModel):
     inbound_count: int
     outbound_count: int
 
+    # Tradução em tempo real
+    client_language: Optional[str] = None
+
     # Análise LLM
     analysis_category: Optional[str] = None
     analysis_sentiment: Optional[str] = None

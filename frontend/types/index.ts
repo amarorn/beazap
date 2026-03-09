@@ -146,6 +146,8 @@ export interface ConversationDetail {
   first_response_time_seconds: number | null
   inbound_count: number
   outbound_count: number
+  // Tradução em tempo real
+  client_language?: string | null
   // Equipe de triagem
   team_id?: number | null
   team_name?: string | null

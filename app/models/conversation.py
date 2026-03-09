@@ -45,6 +45,9 @@ class Conversation(Base):
     # Equipe de triagem
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
 
+    # Idioma do cliente (ISO 639-1) para traducao em tempo real
+    client_language = Column(String(10), nullable=True)
+
     # Análise LLM
     analysis_category = Column(String(30), nullable=True)    # reclamacao, problema_tecnico, nova_contratacao, suporte, elogio, informacao, outro
     analysis_sentiment = Column(String(20), nullable=True)   # positivo, neutro, negativo

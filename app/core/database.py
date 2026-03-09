@@ -80,6 +80,7 @@ def run_migrations():
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} owner_email VARCHAR(255)",
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_enabled BOOLEAN DEFAULT FALSE",
         f"ALTER TABLE instances ADD COLUMN {if_not_exists} auto_message_text TEXT",
+        f"ALTER TABLE conversations ADD COLUMN {if_not_exists} client_language VARCHAR(10)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
