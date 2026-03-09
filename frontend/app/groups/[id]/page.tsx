@@ -1,11 +1,12 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useRef } from 'react'
 import { metricsApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, Users, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Users, MessageSquare, Send, Loader2 } from 'lucide-react'
 
 function formatTime(iso: string) {
   const d = new Date(iso)
@@ -20,7 +21,11 @@ function formatDay(iso: string) {
 export default function GroupDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const id = Number(params.id)
+
+  const [text, setText] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: group, isLoading: loadingGroup } = useQuery({
     queryKey: ['group-detail', id],
@@ -34,6 +39,20 @@ export default function GroupDetailPage() {
     enabled: !!id,
     refetchInterval: 10000,
   })
+
+  const sendMutation = useMutation({
+    mutationFn: (t: string) => metricsApi.sendMessage(id, t),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group-messages', id] })
+      queryClient.invalidateQueries({ queryKey: ['group-detail', id] })
+      setText('')
+    },
+  })
+
+  const handleSend = () => {
+    if (!text.trim()) return
+    sendMutation.mutate(text)
+  }
 
   if (loadingGroup) {
     return (
@@ -172,6 +191,25 @@ export default function GroupDetailPage() {
             </div>
           ))}
         </CardContent>
+        <div className="flex items-end gap-2 p-3 border-t border-zinc-100 dark:border-zinc-800">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={1}
+            placeholder="Mensagem para o grupo..."
+            className="flex-1 min-h-[40px] max-h-32 resize-none rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!text.trim() || sendMutation.isPending}
+            className="flex-shrink-0 w-10 h-10 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+            title="Enviar"
+          >
+            {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+        </div>
       </Card>
     </div>
   )
