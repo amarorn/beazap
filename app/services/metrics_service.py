@@ -531,6 +531,7 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         analysis_satisfaction=c.analysis_satisfaction,
         analysis_summary=c.analysis_summary,
         analysis_analyzed_at=c.analysis_analyzed_at,
+        client_language=c.client_language,
         team_id=c.team_id,
         team_name=c.team.name if c.team else None,
         responsible_id=c.responsible_id,
