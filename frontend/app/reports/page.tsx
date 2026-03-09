@@ -232,6 +232,28 @@ function ExecutiveReport({ days, instanceId }: { days: number; instanceId?: numb
 // ─── Attendants ─────────────────────────────────────────────────────────────────
 type AttSortKey = 'total_conversations' | 'resolution_rate' | 'avg_first_response_seconds' | 'total_messages_sent'
 
+type SortBtnProps = {
+  k: AttSortKey
+  label: string
+  sortKey: AttSortKey
+  sortDir: 'asc' | 'desc'
+  onToggle: (key: AttSortKey) => void
+}
+
+function SortBtn({ k, label, sortKey, sortDir, onToggle }: SortBtnProps) {
+  return (
+    <button
+      onClick={() => onToggle(k)}
+      className={cn(
+        'text-xs font-medium hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors',
+        sortKey === k ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
+      )}
+    >
+      {label} {sortKey === k && (sortDir === 'desc' ? '↓' : '↑')}
+    </button>
+  )
+}
+
 function AttendantsReport({ instanceId }: { instanceId?: number }) {
   const { data: attendants = [] } = useQuery({
     queryKey: ['attendant-metrics', instanceId],
@@ -250,20 +272,6 @@ function AttendantsReport({ instanceId }: { instanceId?: number }) {
   function toggleSort(key: AttSortKey) {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
     else { setSortKey(key); setSortDir('desc') }
-  }
-
-  function SortBtn({ k, label }: { k: AttSortKey; label: string }) {
-    return (
-      <button
-        onClick={() => toggleSort(k)}
-        className={cn(
-          'text-xs font-medium hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors',
-          sortKey === k ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
-        )}
-      >
-        {label} {sortKey === k && (sortDir === 'desc' ? '↓' : '↑')}
-      </button>
-    )
   }
 
   const chartData = sorted.slice(0, 10).map(a => ({
@@ -318,13 +326,21 @@ function AttendantsReport({ instanceId }: { instanceId?: number }) {
             <thead>
               <tr className="border-b border-zinc-100 dark:border-white/[0.06]">
                 <th className="text-left pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Atendente</th>
-                <th className="text-center pb-3"><SortBtn k="total_conversations" label="Total" /></th>
+                <th className="text-center pb-3">
+                  <SortBtn k="total_conversations" label="Total" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
                 <th className="text-center pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Abertos</th>
                 <th className="text-center pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Resolvidos</th>
                 <th className="text-center pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Abandonados</th>
-                <th className="text-center pb-3"><SortBtn k="avg_first_response_seconds" label="T. Resposta" /></th>
-                <th className="text-center pb-3"><SortBtn k="total_messages_sent" label="Msgs Enviadas" /></th>
-                <th className="text-center pb-3"><SortBtn k="resolution_rate" label="Taxa" /></th>
+                <th className="text-center pb-3">
+                  <SortBtn k="avg_first_response_seconds" label="T. Resposta" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
+                <th className="text-center pb-3">
+                  <SortBtn k="total_messages_sent" label="Msgs Enviadas" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
+                <th className="text-center pb-3">
+                  <SortBtn k="resolution_rate" label="Taxa" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
               </tr>
             </thead>
             <tbody>

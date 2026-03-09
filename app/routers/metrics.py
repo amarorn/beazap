@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Body, Depends, Query, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -20,6 +20,13 @@ class AssignBody(BaseModel):
 
 class SendMessageBody(BaseModel):
     text: str
+
+
+class ClassifyIntentBody(BaseModel):
+    customer_products: Optional[str] = ""
+    contract_value: Optional[str] = ""
+    customer_since: Optional[str] = ""
+
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -190,6 +197,26 @@ def get_draft(
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Não foi possível gerar o rascunho.")
+    return result
+
+
+@router.post("/conversations/{conversation_id}/classify-intent")
+def classify_intent(
+    conversation_id: int,
+    body: ClassifyIntentBody | None = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    """Classifica a intenção da conversa e sugere roteamento."""
+    from app.services import intent_classification_service
+    payload = body if body is not None else ClassifyIntentBody()
+    result = intent_classification_service.classify_intent(
+        conversation_id=conversation_id,
+        customer_products=payload.customer_products or "",
+        contract_value=payload.contract_value or "",
+        customer_since=payload.customer_since or "",
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Não foi possível classificar a intenção.")
     return result
 
 

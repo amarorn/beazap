@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Bell } from 'lucide-react'
@@ -14,12 +14,11 @@ const SLA_THRESHOLD_OPTIONS = [
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient()
-  const [slaThreshold, setSlaThreshold] = useState(30)
-
-  useEffect(() => {
+  const [slaThreshold, setSlaThreshold] = useState(() => {
+    if (typeof window === 'undefined') return 30
     const stored = localStorage.getItem('sla_threshold_minutes')
-    if (stored) setSlaThreshold(parseInt(stored, 10))
-  }, [])
+    return stored ? parseInt(stored, 10) : 30
+  })
 
   function handleSlaThresholdChange(value: number) {
     setSlaThreshold(value)
