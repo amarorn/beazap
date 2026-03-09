@@ -123,6 +123,7 @@ class ConversationDetail(BaseModel):
     manager_id: Optional[int] = None
     manager_name: Optional[str] = None
     group_tags: Optional[List[str]] = None
+    is_group: bool = False
 
     class Config:
         from_attributes = True

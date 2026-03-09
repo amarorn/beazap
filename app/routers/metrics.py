@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.services import metrics_service
 from app.services import analysis_service
+from app.services import resolution_summary_service
 from app.services import churn_prediction_service
 from app.services import trends_anomalies_service
 
@@ -157,6 +158,7 @@ def resolve_conversation(
     if not success:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     background_tasks.add_task(analysis_service.analyze_conversation, conversation_id)
+    background_tasks.add_task(resolution_summary_service.generate_and_save_resolution_summary, conversation_id)
     return {"status": "resolved"}
 
 
@@ -170,6 +172,80 @@ def assign_conversation(
     if not ok:
         raise HTTPException(status_code=404, detail="Conversa ou atendente não encontrado")
     return {"status": "assigned"}
+
+
+class SetSendJidBody(BaseModel):
+    send_jid: str
+
+
+@router.patch("/conversations/{conversation_id}/send-jid")
+def set_conversation_send_jid(
+    conversation_id: int,
+    body: SetSendJidBody,
+    db: Session = Depends(get_db),
+):
+    """Define o JID/número para envio quando o contato é LID (ex.: 5511999999999@s.whatsapp.net)."""
+    if not body.send_jid or not body.send_jid.strip():
+        raise HTTPException(status_code=400, detail="send_jid não pode ser vazio")
+    ok = metrics_service.set_conversation_send_jid(db, conversation_id, body.send_jid.strip())
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    return {"status": "ok", "send_jid": body.send_jid.strip()}
+
+
+@router.get("/contacts")
+def list_contacts(
+    instance_id: Optional[int] = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Lista contatos da base (clientes que entraram em contato e foram salvos)."""
+    return metrics_service.list_contacts(db, instance_id=instance_id, limit=limit, offset=offset)
+
+
+class ContactUpdateBody(BaseModel):
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_send_jid: Optional[str] = None
+
+
+@router.patch("/contacts/{contact_id}")
+def update_contact(contact_id: int, body: ContactUpdateBody, db: Session = Depends(get_db)):
+    """Atualiza nome, telefone ou JID de envio do contato."""
+    result = metrics_service.update_contact(
+        db,
+        contact_id,
+        contact_name=body.contact_name,
+        contact_phone=body.contact_phone,
+        contact_send_jid=body.contact_send_jid,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Contato não encontrado")
+    return result
+
+
+@router.delete("/contacts/{contact_id}")
+def delete_contact_route(contact_id: int, db: Session = Depends(get_db)):
+    """Remove o contato da base."""
+    if not metrics_service.delete_contact(db, contact_id):
+        raise HTTPException(status_code=404, detail="Contato não encontrado")
+    return {"status": "deleted"}
+
+
+@router.get("/conversations/{conversation_id}/contact-status")
+def get_conversation_contact_status(conversation_id: int, db: Session = Depends(get_db)):
+    """Retorna se o cliente desta conversa já está cadastrado na base de contatos."""
+    return metrics_service.get_conversation_contact_status(db, conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/save-contact")
+def save_contact_from_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    """Salva o cliente da conversa na base de contatos (dados atuais + número para envio)."""
+    result = metrics_service.save_contact_from_conversation(db, conversation_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @router.post("/conversations/{conversation_id}/send")
@@ -467,6 +543,7 @@ def get_notes(conversation_id: int, db: Session = Depends(get_db)):
             "id": n.id,
             "author_name": n.author_name,
             "content": n.content,
+            "note_type": getattr(n, "note_type", "manual"),
             "created_at": n.created_at.isoformat(),
         }
         for n in notes
@@ -486,6 +563,7 @@ def add_note(conversation_id: int, body: NoteCreate, db: Session = Depends(get_d
         conversation_id=conversation_id,
         author_name=(body.author_name or "Agente").strip(),
         content=body.content.strip(),
+        note_type="manual",
     )
     db.add(note)
     db.commit()
@@ -494,6 +572,7 @@ def add_note(conversation_id: int, body: NoteCreate, db: Session = Depends(get_d
         "id": note.id,
         "author_name": note.author_name,
         "content": note.content,
+        "note_type": getattr(note, "note_type", "manual"),
         "created_at": note.created_at.isoformat(),
     }
 
@@ -510,3 +589,78 @@ def delete_note(conversation_id: int, note_id: int, db: Session = Depends(get_db
     db.delete(note)
     db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/conversations/{conversation_id}/context-summaries")
+def get_context_summaries(conversation_id: int, db: Session = Depends(get_db)):
+    """Resumos de conversas anteriores do mesmo cliente (contato), para contexto."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_note import ConversationNote
+    from sqlalchemy import or_
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    contact_phone = (conv.contact_phone or "").strip()
+    contact_jid = (conv.contact_jid or "").strip()
+    if not contact_phone and not contact_jid:
+        return []
+    cond = Conversation.id != conversation_id
+    if contact_phone and contact_jid:
+        cond = cond & (or_(Conversation.contact_phone == contact_phone, Conversation.contact_jid == contact_jid))
+    elif contact_phone:
+        cond = cond & (Conversation.contact_phone == contact_phone)
+    else:
+        cond = cond & (Conversation.contact_jid == contact_jid)
+    other_conv_ids = [r[0] for r in db.query(Conversation.id).filter(cond).all()]
+    if not other_conv_ids:
+        return []
+    notes = (
+        db.query(ConversationNote, Conversation.resolved_at)
+        .join(Conversation, ConversationNote.conversation_id == Conversation.id)
+        .filter(
+            ConversationNote.conversation_id.in_(other_conv_ids),
+            ConversationNote.note_type == "resumo_llm",
+        )
+        .order_by(Conversation.resolved_at.desc().nullslast())
+        .limit(10)
+        .all()
+    )
+    return [
+        {"resolved_at": (resolved_at.isoformat() if resolved_at else None), "summary": note.content}
+        for note, resolved_at in notes
+    ]
+
+
+@router.get("/conversation-summaries")
+def list_conversation_summaries(
+    days: int = Query(default=30, ge=1, le=365),
+    instance_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Lista resumos de conversas resolvidas para o relatório de gerência."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_note import ConversationNote
+    from datetime import datetime, timedelta
+    from sqlalchemy import and_
+    since = datetime.utcnow() - timedelta(days=days)
+    q = (
+        db.query(Conversation, ConversationNote.content)
+        .join(ConversationNote, and_(
+            ConversationNote.conversation_id == Conversation.id,
+            ConversationNote.note_type == "resumo_llm",
+        ))
+        .filter(Conversation.resolved_at >= since)
+    )
+    if instance_id is not None:
+        q = q.filter(Conversation.instance_id == instance_id)
+    rows = q.order_by(Conversation.resolved_at.desc()).limit(500).all()
+    return [
+        {
+            "conversation_id": c.id,
+            "contact_phone": c.contact_phone,
+            "contact_name": c.contact_name,
+            "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None,
+            "summary": content,
+        }
+        for c, content in rows
+    ]

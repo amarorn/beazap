@@ -163,6 +163,21 @@ export interface ConversationDetail {
   manager_id?: number | null
   manager_name?: string | null
   group_tags?: string[] | null
+  is_group?: boolean
+}
+
+export interface Contact {
+  id: number
+  instance_id: number
+  instance_name: string | null
+  contact_phone: string
+  contact_jid: string | null
+  contact_send_jid: string | null
+  contact_name: string | null
+  contact_avatar_url: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+  created_at: string | null
 }
 
 export interface CategoryCount {
@@ -216,7 +231,16 @@ export interface ConversationNote {
   id: number
   author_name: string
   content: string
+  note_type?: 'manual' | 'resumo_llm'
   created_at: string
+}
+
+export interface ConversationSummaryItem {
+  conversation_id: number
+  contact_phone: string
+  contact_name: string | null
+  resolved_at: string | null
+  summary: string
 }
 
 export interface CallLogEntry {
@@ -274,6 +298,85 @@ export interface DatabricksJobRun {
   extracted_codigo_cliente: string | null
   notebook_params_json: string | null
 }
+
+// ── LLM Insights ────────────────────────────────────────────────────────────
+
+export interface EmergingTopic {
+  nome: string
+  descricao: string
+  exemplos_resumos: string[]
+}
+
+export interface EmergingTopicsResult {
+  topicos_emergentes: EmergingTopic[]
+  periodo: { inicio: string; fim: string }
+}
+
+export interface MetricAnomaly {
+  metrica: string
+  tipo: 'pico' | 'queda'
+  valor_atual: number
+  valor_historico: number
+  descricao: string
+  sugestao_causa_impacto: string
+}
+
+export interface MetricSnapshot {
+  volume: number
+  satisfaction: number
+  resolution_rate: number
+  avg_response_seconds: number
+}
+
+export interface MetricAnomaliesResult {
+  anomalias: MetricAnomaly[]
+  periodo: { inicio: string; fim: string }
+  categoria: string
+  metricas_atual: MetricSnapshot
+  metricas_historico: MetricSnapshot
+}
+
+export interface SentimentAnomaly {
+  contexto: string
+  tipo_contexto: string
+  mudanca_sentimento: string
+  descricao: string
+  implicacao_sugerida: string
+}
+
+export interface SentimentDistribution {
+  positivo: number
+  neutro: number
+  negativo: number
+}
+
+export interface SentimentAnomaliesResult {
+  anomalias_sentimento: SentimentAnomaly[]
+  periodo: { inicio: string; fim: string }
+  contexto: string
+  tipo_contexto: string
+  distribuicao_atual: SentimentDistribution
+  distribuicao_historica: SentimentDistribution
+}
+
+export interface ChurnMetrics {
+  total_conversas: number
+  conversas_resolvidas: number
+  conversas_abandonadas: number
+  ultima_interacao_dias: number
+  media_satisfacao: number
+}
+
+export interface ChurnPredictionResult {
+  cliente_id: string
+  risco_churn: 'Baixo' | 'Medio' | 'Alto'
+  razoes: string[]
+  acoes_sugeridas: string[]
+  periodo: { inicio: string; fim: string }
+  metricas_utilizadas: ChurnMetrics
+}
+
+// ── Attendant Summaries ──────────────────────────────────────────────────────
 
 export interface AttendantSummary {
   attendant_id: number

@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import re
 import httpx
 import qrcode
 from typing import Optional
@@ -124,9 +125,16 @@ async def get_webhook(api_url: str, api_key: str, instance_name: str) -> Optiona
 
 
 def send_text_message(api_url: str, api_key: str, instance_name: str, phone: str, text: str) -> bool:
-    """Sends a text message via Evolution API (synchronous). Returns True on success."""
+    """Sends a text message via Evolution API (synchronous). Returns True on success.
+    O parametro number deve ser apenas digitos (ou id do grupo com @g.us); JID com @s.whatsapp.net e normalizado.
+    """
     url = f"{api_url.rstrip('/')}/message/sendText/{instance_name}"
-    payload = {"number": phone, "text": text}
+    number = str(phone).strip()
+    if number.endswith("@s.whatsapp.net"):
+        number = number.replace("@s.whatsapp.net", "").strip()
+    elif "@g.us" not in number:
+        number = re.sub(r"\D+", "", number) or number
+    payload = {"number": number, "text": text}
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, json=payload, headers={"apikey": api_key})

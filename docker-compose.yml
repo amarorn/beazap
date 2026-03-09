@@ -32,7 +32,7 @@ services:
       - beazap-net
 
   evolution:
-    image: atendai/evolution-api:v2.1.1
+    image: atendai/evolution-api:v2.2.3
     platform: linux/amd64
     container_name: beazap-evolution
     ports:
@@ -59,6 +59,7 @@ services:
       DATABASE_SAVE_DATA_CHATS: "true"
       DATABASE_SAVE_DATA_LABELS: "true"
       DATABASE_SAVE_DATA_HISTORIC: "true"
+      DATABASE_SAVE_DATA_IS_ON_WHATSAPP: "true"
 
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://host.docker.internal:6381/1

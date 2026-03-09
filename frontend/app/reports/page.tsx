@@ -25,7 +25,7 @@ function fmt(seconds?: number | null) {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}min`
 }
 
-type TabId = 'ai' | 'executive' | 'attendants' | 'sla' | 'analysis' | 'volume' | 'teams'
+type TabId = 'ai' | 'executive' | 'attendants' | 'sla' | 'analysis' | 'volume' | 'teams' | 'resumos'
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'ai', label: 'Avaliação IA', icon: Sparkles },
@@ -35,6 +35,7 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
   { id: 'analysis', label: 'Análise LLM', icon: Brain },
   { id: 'volume', label: 'Volume', icon: Activity },
   { id: 'teams', label: 'Equipes', icon: UsersRound },
+  { id: 'resumos', label: 'Resumos das conversas', icon: FileText },
 ]
 
 const C = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
@@ -1000,6 +1001,60 @@ function TeamsReport({ instanceId }: { instanceId?: number }) {
   )
 }
 
+// ─── Resumos das conversas (gerência) ─────────────────────────────────────────────
+function ResumosReport({ days, instanceId }: { days: number; instanceId?: number }) {
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['conversation-summaries', days, instanceId],
+    queryFn: () => metricsApi.getConversationSummaries({ days, instance_id: instanceId }),
+  })
+  return (
+    <div className="space-y-5">
+      <Card title="Resumos das conversas resolvidas">
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Resumos gerados por IA ao resolver cada conversa. Útil para contexto em novas conversas do mesmo cliente e para o time de gerência.
+        </p>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+          </div>
+        ) : items.length === 0 ? (
+          <p className="text-center text-zinc-400 dark:text-zinc-500 text-sm py-10">
+            Nenhum resumo no período. Resolva conversas para gerar resumos automaticamente.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-100 dark:border-white/[0.06]">
+                  <th className="text-left pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Data</th>
+                  <th className="text-left pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Contato</th>
+                  <th className="text-left pb-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">Resumo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => (
+                  <tr key={row.conversation_id} className="border-b border-zinc-50 dark:border-white/[0.04] hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                    <td className="py-2.5 text-xs text-zinc-600 dark:text-zinc-400 whitespace-nowrap">
+                      {row.resolved_at ? new Date(row.resolved_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="py-2.5">
+                      <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">{row.contact_name || row.contact_phone || '—'}</span>
+                      {row.contact_name && row.contact_phone && (
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1">({row.contact_phone})</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-xs text-zinc-700 dark:text-zinc-300 max-w-md">{row.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 // ─── Avaliação IA ─────────────────────────────────────────────────────────────────
 function SentimentBar({ sentiments }: { sentiments: Record<string, number> }) {
   const total = Object.values(sentiments).reduce((s, v) => s + v, 0)
@@ -1330,6 +1385,7 @@ export default function ReportsPage() {
       {activeTab === 'analysis' && <AnalysisReport instanceId={selectedInstanceId} />}
       {activeTab === 'volume' && <VolumeReport days={days} instanceId={selectedInstanceId} />}
       {activeTab === 'teams' && <TeamsReport instanceId={selectedInstanceId} />}
+      {activeTab === 'resumos' && <ResumosReport days={days} instanceId={selectedInstanceId} />}
     </div>
   )
 }

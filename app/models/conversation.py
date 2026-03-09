@@ -16,6 +16,8 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     contact_phone = Column(String(30), nullable=False, index=True)
+    contact_jid = Column(String(80), nullable=True)  # Full remoteJid (e.g. 5584...@s.whatsapp.net or lid@lid)
+    contact_send_jid = Column(String(80), nullable=True)  # JID para envio (remoteJidAlt quando contato e LID)
     contact_name = Column(String(150), nullable=True)
     contact_avatar_url = Column(String(500), nullable=True)
     attendant_id = Column(Integer, ForeignKey("attendants.id"), nullable=True)

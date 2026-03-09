@@ -1,13 +1,15 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_, case
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
+import uuid
 from typing import List, Optional
 
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection, MessageType
 from app.models.attendant import Attendant
 from app.models.instance import Instance
+from app.models.contact import Contact
 from app.schemas.metrics import (
     AttendantMetrics,
     OverviewMetrics,
@@ -539,6 +541,7 @@ def _to_conversation_detail(c: Conversation) -> ConversationDetail:
         manager_id=c.manager_id,
         manager_name=c.group_manager.name if c.group_manager else None,
         group_tags=_parse_group_tags(c.group_tags),
+        is_group=c.is_group or False,
     )
 
 
@@ -621,6 +624,152 @@ def resolve_conversation(db: Session, conversation_id: int) -> bool:
         return False
     conv.status = ConversationStatus.resolved
     conv.resolved_at = datetime.utcnow()
+    db.commit()
+    return True
+
+
+def set_conversation_send_jid(db: Session, conversation_id: int, send_jid: str) -> bool:
+    """Define o JID para envio (ex.: número real quando o contato e LID). Retorna True se atualizou."""
+    if not send_jid or not send_jid.strip():
+        return False
+    send_jid = send_jid.strip()
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        return False
+    conv.contact_send_jid = send_jid
+    db.commit()
+    return True
+
+
+def get_conversation_contact_status(db: Session, conversation_id: int) -> dict:
+    """Retorna se o cliente desta conversa já está cadastrado na base de contatos."""
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv or conv.is_group:
+        return {"saved": False}
+    contact_phone = (conv.contact_phone or "").strip()
+    contact_jid = (conv.contact_jid or "").strip()
+    if not contact_phone and not contact_jid:
+        return {"saved": False}
+    q = db.query(Contact).filter(Contact.instance_id == conv.instance_id)
+    if contact_phone and contact_jid:
+        q = q.filter(
+            or_(Contact.contact_phone == contact_phone, Contact.contact_jid == contact_jid)
+        )
+    elif contact_phone:
+        q = q.filter(Contact.contact_phone == contact_phone)
+    else:
+        q = q.filter(Contact.contact_jid == contact_jid)
+    c = q.first()
+    if not c:
+        return {"saved": False}
+    return {"saved": True, "contact_id": c.id}
+
+
+def save_contact_from_conversation(db: Session, conversation_id: int) -> dict:
+    """Cria contato a partir dos dados da conversa e define contact_send_jid na conversa para envio."""
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        return {"error": "Conversa não encontrada"}
+    if conv.is_group:
+        return {"error": "Não é possível salvar contato de grupo"}
+    status = get_conversation_contact_status(db, conversation_id)
+    if status.get("saved"):
+        return {"contact_id": status["contact_id"], "already_saved": True}
+    now = datetime.utcnow()
+    send_jid = conv.contact_send_jid or (conv.contact_jid if (conv.contact_jid or "").endswith("@s.whatsapp.net") else None)
+    c = Contact(
+        instance_id=conv.instance_id,
+        contact_phone=conv.contact_phone or "",
+        contact_jid=conv.contact_jid,
+        contact_send_jid=send_jid,
+        contact_name=conv.contact_name,
+        contact_avatar_url=conv.contact_avatar_url,
+        first_seen_at=conv.opened_at or now,
+        last_seen_at=conv.last_message_at or now,
+    )
+    db.add(c)
+    db.flush()
+    if send_jid and not conv.contact_send_jid:
+        conv.contact_send_jid = send_jid
+    db.commit()
+    db.refresh(c)
+    return {"contact_id": c.id, "already_saved": False}
+
+
+def list_contacts(
+    db: Session,
+    instance_id: Optional[int] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> List[dict]:
+    """Lista contatos da base, opcionalmente filtrados por instância."""
+    query = db.query(Contact).join(Instance, Contact.instance_id == Instance.id)
+    if instance_id is not None:
+        query = query.filter(Contact.instance_id == instance_id)
+    rows = (
+        query.order_by(Contact.last_seen_at.desc().nullslast(), Contact.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "instance_id": c.instance_id,
+            "instance_name": c.instance.name if c.instance else None,
+            "contact_phone": c.contact_phone or "",
+            "contact_jid": c.contact_jid,
+            "contact_send_jid": c.contact_send_jid,
+            "contact_name": c.contact_name,
+            "contact_avatar_url": c.contact_avatar_url,
+            "first_seen_at": c.first_seen_at.isoformat() if c.first_seen_at else None,
+            "last_seen_at": c.last_seen_at.isoformat() if c.last_seen_at else None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in rows
+    ]
+
+
+def update_contact(
+    db: Session,
+    contact_id: int,
+    contact_name: Optional[str] = None,
+    contact_phone: Optional[str] = None,
+    contact_send_jid: Optional[str] = None,
+) -> Optional[dict]:
+    """Atualiza contato por id. Retorna o contato atualizado ou None se nao existir."""
+    c = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not c:
+        return None
+    if contact_name is not None:
+        c.contact_name = contact_name.strip() or None
+    if contact_phone is not None:
+        c.contact_phone = contact_phone.strip() or c.contact_phone
+    if contact_send_jid is not None:
+        c.contact_send_jid = contact_send_jid.strip() or None
+    db.commit()
+    db.refresh(c)
+    return {
+        "id": c.id,
+        "instance_id": c.instance_id,
+        "instance_name": c.instance.name if c.instance else None,
+        "contact_phone": c.contact_phone or "",
+        "contact_jid": c.contact_jid,
+        "contact_send_jid": c.contact_send_jid,
+        "contact_name": c.contact_name,
+        "contact_avatar_url": c.contact_avatar_url,
+        "first_seen_at": c.first_seen_at.isoformat() if c.first_seen_at else None,
+        "last_seen_at": c.last_seen_at.isoformat() if c.last_seen_at else None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+def delete_contact(db: Session, contact_id: int) -> bool:
+    """Remove contato por id. Retorna True se removeu, False se nao existia."""
+    c = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not c:
+        return False
+    db.delete(c)
     db.commit()
     return True
 
@@ -926,16 +1075,53 @@ def assign_conversation(
     return True
 
 
+def _register_lid_in_evolution_cache(jid: str) -> bool:
+    """Registra JID LID na tabela IsOnWhatsapp da Evolution para permitir envio. Retorna True se ok."""
+    from app.core.config import get_settings
+    uri = get_settings().EVOLUTION_DATABASE_URI
+    if not uri or not jid or "@" not in jid:
+        return False
+    try:
+        import psycopg2
+    except ImportError:
+        return False
+    base = jid.split("@")[0]
+    jid_options = f"{base},{jid}"
+    now = datetime.now(timezone.utc)
+    try:
+        conn = psycopg2.connect(uri)
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM "IsOnWhatsapp" WHERE "remoteJid" = %s', (jid,))
+        row = cur.fetchone()
+        if row:
+            cur.execute(
+                'UPDATE "IsOnWhatsapp" SET "jidOptions" = %s, "updatedAt" = %s WHERE "remoteJid" = %s',
+                (jid_options, now, jid),
+            )
+        else:
+            uid = "lid_" + uuid.uuid4().hex[:20]
+            cur.execute(
+                """INSERT INTO "IsOnWhatsapp" (id, "remoteJid", "jidOptions", "createdAt", "updatedAt")
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (uid, jid, jid_options, now, now),
+            )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
 async def send_message_to_conversation(db: Session, conversation_id: int, text: str) -> dict:
     """Envia mensagem de texto via Evolution API e salva no banco local."""
     import httpx
-    import uuid
     import logging
 
     logger = logging.getLogger(__name__)
 
     conv = db.query(Conversation).options(
-        __import__('sqlalchemy.orm', fromlist=['joinedload']).joinedload(Conversation.instance)
+        joinedload(Conversation.instance)
     ).filter(Conversation.id == conversation_id).first()
 
     if not conv:
@@ -945,27 +1131,78 @@ async def send_message_to_conversation(db: Session, conversation_id: int, text: 
     if not instance or not instance.api_url or not instance.api_key:
         return {"error": "Instância sem configuração de API válida"}
 
-    phone_raw = (conv.contact_phone or "").split("@")[0].split(":")[0]
-    if not phone_raw:
-        return {"error": "Número do contato inválido"}
-    phone_digits = re.sub(r"\D+", "", phone_raw)
-    if not phone_digits:
-        return {"error": "Número do contato inválido"}
-    phone_jid = f"{phone_digits}@g.us" if conv.is_group else phone_digits
+    # Prioridade: contact_send_jid da conversa > contact da base (editado) > contact_jid
+    phone_jid = None
+    if conv.contact_send_jid and not str(conv.contact_send_jid).endswith("@lid"):
+        phone_jid = conv.contact_send_jid
+    if not phone_jid and not conv.is_group and str(conv.contact_jid or "").endswith("@lid"):
+        # Conversa tem LID; buscar numero cadastrado no contato (editado pelo atendente)
+        contact_phone = (conv.contact_phone or "").strip()
+        contact_jid = (conv.contact_jid or "").strip()
+        q = db.query(Contact).filter(Contact.instance_id == conv.instance_id)
+        if contact_phone and contact_jid:
+            q = q.filter(or_(Contact.contact_phone == contact_phone, Contact.contact_jid == contact_jid))
+        elif contact_phone:
+            q = q.filter(Contact.contact_phone == contact_phone)
+        else:
+            q = q.filter(Contact.contact_jid == contact_jid)
+        c = q.first()
+        if c:
+            if c.contact_send_jid and str(c.contact_send_jid).endswith("@s.whatsapp.net"):
+                phone_jid = c.contact_send_jid
+            elif c.contact_phone and re.match(r"^\d{10,15}$", re.sub(r"\D+", "", c.contact_phone)):
+                phone_jid = re.sub(r"\D+", "", c.contact_phone)
+    if not phone_jid and conv.contact_jid and not str(conv.contact_jid).endswith("@lid"):
+        phone_jid = conv.contact_jid
+    if not phone_jid:
+        phone_raw = (conv.contact_phone or "").split("@")[0].split(":")[0]
+        if not phone_raw:
+            return {"error": "Número do contato inválido"}
+        phone_digits = re.sub(r"\D+", "", phone_raw)
+        if not phone_digits:
+            return {"error": "Número do contato inválido"}
+        phone_jid = f"{phone_digits}@g.us" if conv.is_group else phone_digits
+
+    # Evolution API sendText espera "number" com apenas digitos (ou id do grupo); nao enviar JID completo
+    if str(phone_jid).endswith("@s.whatsapp.net"):
+        number_for_api = str(phone_jid).replace("@s.whatsapp.net", "").strip()
+    elif conv.is_group and "@g.us" in str(phone_jid):
+        number_for_api = phone_jid
+    else:
+        number_for_api = re.sub(r"\D+", "", str(phone_jid)) or phone_jid
 
     url = f"{instance.api_url.rstrip('/')}/message/sendText/{instance.instance_name}"
     headers = {"apikey": instance.api_key, "Content-Type": "application/json"}
-    payload = {"number": phone_jid, "text": text}
+    payload = {"number": number_for_api, "text": text}
     logger.info("send_message: url=%s payload=%s", url, payload)
 
     data = None
+    is_lid = str(phone_jid).endswith("@lid")
+
+    def _error_for_exists_false():
+        if is_lid:
+            return {
+                "error": (
+                    "Este contato usa LID (WhatsApp) e a Evolution API não permite envio por aqui. "
+                    "Envie a mensagem pelo Evolution Manager (http://localhost:8081) ou pelo app WhatsApp. "
+                    f"Alternativa: execute 'python3 scripts/evolution_flush_cache_and_register_lid.py \"{phone_jid}\"', "
+                    "reinicie o container (docker compose up -d evolution) e tente de novo."
+                )
+            }
+        return {
+            "error": (
+                "O WhatsApp não conseguiu localizar este contato. "
+                "Verifique se a instância está conectada (Settings → Instâncias) e tente novamente."
+            )
+        }
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code in (200, 201):
-                data = resp.json()
-            else:
+            for attempt in range(2):
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    break
                 try:
                     body = resp.json()
                 except Exception:
@@ -984,13 +1221,10 @@ async def send_message_to_conversation(db: Session, conversation_id: int, text: 
                     and msg_list[0].get("exists") is False
                 )
                 if exists_false:
-                    return {
-                        "error": (
-                            "O WhatsApp não conseguiu localizar este contato. "
-                            "Verifique se a instância está conectada (Settings → Instâncias) "
-                            "e tente novamente."
-                        )
-                    }
+                    if is_lid and attempt == 0:
+                        _register_lid_in_evolution_cache(phone_jid)
+                        continue
+                    return _error_for_exists_false()
 
                 # Detecta instância desconectada do WhatsApp
                 resp_msg = resp_data.get("message", "")
