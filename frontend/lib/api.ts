@@ -164,6 +164,22 @@ export const metricsApi = {
       `/api/metrics/conversations/${conversationId}/suggestions`,
       { params: { company_tone: companyTone } }
     ).then(r => r.data.suggestions),
+
+  generateConversationFeedback: (conversationId: number) =>
+    api
+      .post<{
+        conversa_id: string
+        avaliacao_geral: {
+          clareza_comunicacao: { nota: number; justificativa: string }
+          empatia_tom_de_voz: { nota: number; justificativa: string }
+          eficiencia_resolucao: { nota: number; justificativa: string }
+          conhecimento_precisao: { nota: number; justificativa: string }
+        }
+        ponto_forte: { descricao: string; exemplo_conversa: string }
+        area_melhoria: { descricao: string; exemplo_conversa: string }
+        sugestao_acionavel: string
+      }>(`/api/metrics/conversations/${conversationId}/feedback`)
+      .then(r => r.data),
 }
 
 export const instancesApi = {
