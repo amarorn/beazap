@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.services import metrics_service
 from app.services import analysis_service
 from app.services import churn_prediction_service
+from app.services import trends_anomalies_service
 
 
 class GroupConfigUpdate(BaseModel):
@@ -259,6 +260,52 @@ def predict_churn(
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Nao foi possivel avaliar o risco de churn.")
+    return result
+
+
+@router.get("/trends/emerging-topics")
+def get_emerging_topics(
+    data_inicio: str = Query(..., description="Data inicio ISO (ex: 2024-03-01)"),
+    data_fim: str = Query(..., description="Data fim ISO (ex: 2024-03-07)"),
+    instance_id: Optional[int] = Query(default=None),
+):
+    """Identifica topicos emergentes em resumos de conversas do periodo."""
+    result = trends_anomalies_service.analyze_emerging_topics(data_inicio, data_fim, instance_id)
+    if result is None:
+        raise HTTPException(status_code=503, detail="Nao foi possivel analisar topicos emergentes.")
+    return result
+
+
+@router.get("/trends/metric-anomalies")
+def get_metric_anomalies(
+    data_inicio: str = Query(..., description="Data inicio ISO (ex: 2024-03-01)"),
+    data_fim: str = Query(..., description="Data fim ISO (ex: 2024-03-07)"),
+    categoria: str = Query(..., description="Categoria (reclamacao, suporte, etc.)"),
+    instance_id: Optional[int] = Query(default=None),
+):
+    """Identifica anomalias em metricas comparando periodo atual vs historico."""
+    result = trends_anomalies_service.analyze_metric_anomalies(
+        data_inicio, data_fim, categoria, instance_id
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Nao foi possivel analisar anomalias.")
+    return result
+
+
+@router.get("/trends/sentiment-anomalies")
+def get_sentiment_anomalies(
+    data_inicio: str = Query(..., description="Data inicio ISO (ex: 2024-03-01)"),
+    data_fim: str = Query(..., description="Data fim ISO (ex: 2024-03-07)"),
+    contexto: str = Query(..., description="Nome do topico (categoria) ou atendente"),
+    tipo: str = Query(..., description="topico ou atendente"),
+    instance_id: Optional[int] = Query(default=None),
+):
+    """Identifica anomalias na distribuicao de sentimentos para topico ou atendente."""
+    result = trends_anomalies_service.analyze_sentiment_anomalies(
+        data_inicio, data_fim, contexto, tipo, instance_id
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Nao foi possivel analisar anomalias de sentimento.")
     return result
 
 
