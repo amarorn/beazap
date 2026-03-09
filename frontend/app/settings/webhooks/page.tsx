@@ -100,7 +100,7 @@ export default function WebhooksPage() {
 
   const effectiveInstanceId = selectedInstanceId ?? instances[0]?.id ?? null
   const selectedInstance = instances.find(i => i.id === effectiveInstanceId) ?? null
-  const base = serverUrl.replace(/\/$/, '')
+  const base = serverUrl.replace(/\/$/, '').split('/webhook')[0]
   const webhookUrl = selectedInstance
     ? `${base}/webhook/${selectedInstance.instance_name}`
     : ''
@@ -126,7 +126,7 @@ export default function WebhooksPage() {
     setWebhookStatus(s => ({ ...s, [instId]: { ok: false } }))
     try {
       const res = await instancesApi.configureWebhook(instId, {
-        server_url: serverUrl,
+        server_url: base,
         webhook_by_events: webhookByEvents,
         webhook_base64: webhookBase64,
         events: Array.from(selectedEvents),
