@@ -164,6 +164,43 @@ export const metricsApi = {
       `/api/metrics/conversations/${conversationId}/suggestions`,
       { params: { company_tone: companyTone } }
     ).then(r => r.data.suggestions),
+
+  automationClassifyIntent: (conversationId: number, body?: { mensagem_cliente?: string }) =>
+    api
+      .post<{
+        intencao_detectada: string
+        tipo_tratamento: string
+        parametros_necessarios: { numero_pedido?: string | null; cpf_cnpj?: string | null } | null
+        justificativa_escalonamento: string | null
+      }>(`/api/metrics/conversations/${conversationId}/automation/classify`, body ?? {})
+      .then(r => r.data),
+
+  automationGenerateResponse: (data: {
+    intencao_detectada: string
+    mensagem_cliente: string
+    parametros_pendentes?: string[]
+  }) =>
+    api
+      .post<{
+        resposta_automatica: string
+        entidades_extraidas: Record<string, string | null>
+      }>('/api/metrics/automation/generate-response', data)
+      .then(r => r.data),
+
+  automationConfirmAction: (data: {
+    intencao_detectada: string
+    entidades_coletadas: Record<string, unknown>
+    status_execucao_acao: string
+    resultado_acao?: string
+    motivo_falha?: string
+    proximos_passos?: string
+  }) =>
+    api
+      .post<{ mensagem_final: string; acao_concluida: boolean }>(
+        '/api/metrics/automation/confirm',
+        data
+      )
+      .then(r => r.data),
 }
 
 export const instancesApi = {
