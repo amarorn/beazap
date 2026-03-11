@@ -1,0 +1,13 @@
+.git
+.github
+.hust
+*.tgz
+dist
+log
+node_modules
+npm-debug.log
+tokens
+userDataDir
+wppconnect_tokens
+*.md
+requests.http

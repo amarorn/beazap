@@ -1,0 +1,18 @@
+services:
+  wppconnect:
+    container_name: wpp-server
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wppconnect-server-beazap:latest
+    volumes:
+      - wpp-userdata:/usr/src/wpp-server/userDataDir
+      - wpp-tokens:/usr/src/wpp-server/tokens
+    ports:
+      - '21465:21465'
+    shm_size: '2gb'
+
+volumes:
+  wpp-userdata: {}
+  wpp-tokens: {}
