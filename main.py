@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -7,14 +8,17 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import create_tables, run_migrations
-from app.routers.webhook import router as webhook_router, root_router as webhook_root_router
+from app.routers.webhook import router as webhook_router
 from app.routers import metrics, instances, dashboard, sse, teams, quick_replies, reports, databricks, translation
+from app.routers.v2 import connections as v2_connections, messages as v2_messages
+from app.services.wppconnect_service import warm_all_instances_sessions
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
     run_migrations()
+    asyncio.create_task(warm_all_instances_sessions())
     yield
 
 
@@ -41,7 +45,6 @@ if Path("static").exists():
 
 app.include_router(dashboard.router)
 app.include_router(webhook_router)
-app.include_router(webhook_root_router)
 app.include_router(metrics.router)
 app.include_router(instances.router)
 app.include_router(sse.router)
@@ -50,6 +53,8 @@ app.include_router(quick_replies.router)
 app.include_router(reports.router)
 app.include_router(databricks.router)
 app.include_router(translation.router)
+app.include_router(v2_connections.router)
+app.include_router(v2_messages.router)
 
 
 if __name__ == "__main__":

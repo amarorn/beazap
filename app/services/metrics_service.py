@@ -1075,48 +1075,11 @@ def assign_conversation(
     return True
 
 
-def _register_lid_in_evolution_cache(jid: str) -> bool:
-    """Registra JID LID na tabela IsOnWhatsapp da Evolution para permitir envio. Retorna True se ok."""
-    from app.core.config import get_settings
-    uri = get_settings().EVOLUTION_DATABASE_URI
-    if not uri or not jid or "@" not in jid:
-        return False
-    try:
-        import psycopg2
-    except ImportError:
-        return False
-    base = jid.split("@")[0]
-    jid_options = f"{base},{jid}"
-    now = datetime.now(timezone.utc)
-    try:
-        conn = psycopg2.connect(uri)
-        cur = conn.cursor()
-        cur.execute('SELECT id FROM "IsOnWhatsapp" WHERE "remoteJid" = %s', (jid,))
-        row = cur.fetchone()
-        if row:
-            cur.execute(
-                'UPDATE "IsOnWhatsapp" SET "jidOptions" = %s, "updatedAt" = %s WHERE "remoteJid" = %s',
-                (jid_options, now, jid),
-            )
-        else:
-            uid = "lid_" + uuid.uuid4().hex[:20]
-            cur.execute(
-                """INSERT INTO "IsOnWhatsapp" (id, "remoteJid", "jidOptions", "createdAt", "updatedAt")
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (uid, jid, jid_options, now, now),
-            )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return True
-    except Exception:
-        return False
-
-
 async def send_message_to_conversation(db: Session, conversation_id: int, text: str) -> dict:
-    """Envia mensagem de texto via Evolution API e salva no banco local."""
+    """Envia mensagem de texto via open-wa Easy API e salva no banco local."""
     import httpx
     import logging
+    from app.services.wppconnect_service import _normalize_chat_id
 
     logger = logging.getLogger(__name__)
 
@@ -1125,140 +1088,72 @@ async def send_message_to_conversation(db: Session, conversation_id: int, text: 
     ).filter(Conversation.id == conversation_id).first()
 
     if not conv:
-        return {"error": "Conversa não encontrada"}
+        return {"error": "Conversa nao encontrada"}
 
     instance = conv.instance
     if not instance or not instance.api_url or not instance.api_key:
-        return {"error": "Instância sem configuração de API válida"}
+        return {"error": "Instancia sem configuracao de API valida"}
 
-    # Prioridade: contact_send_jid da conversa > contact da base (editado) > contact_jid
-    phone_jid = None
-    if conv.contact_send_jid and not str(conv.contact_send_jid).endswith("@lid"):
-        phone_jid = conv.contact_send_jid
-    if not phone_jid and not conv.is_group and str(conv.contact_jid or "").endswith("@lid"):
-        # Conversa tem LID; buscar numero cadastrado no contato (editado pelo atendente)
-        contact_phone = (conv.contact_phone or "").strip()
-        contact_jid = (conv.contact_jid or "").strip()
-        q = db.query(Contact).filter(Contact.instance_id == conv.instance_id)
-        if contact_phone and contact_jid:
-            q = q.filter(or_(Contact.contact_phone == contact_phone, Contact.contact_jid == contact_jid))
-        elif contact_phone:
-            q = q.filter(Contact.contact_phone == contact_phone)
-        else:
-            q = q.filter(Contact.contact_jid == contact_jid)
-        c = q.first()
-        if c:
-            if c.contact_send_jid and str(c.contact_send_jid).endswith("@s.whatsapp.net"):
-                phone_jid = c.contact_send_jid
-            elif c.contact_phone and re.match(r"^\d{10,15}$", re.sub(r"\D+", "", c.contact_phone)):
-                phone_jid = re.sub(r"\D+", "", c.contact_phone)
-    if not phone_jid and conv.contact_jid and not str(conv.contact_jid).endswith("@lid"):
-        phone_jid = conv.contact_jid
+    # Determina o ChatId para envio
+    phone_jid = conv.contact_jid or conv.contact_send_jid
     if not phone_jid:
         phone_raw = (conv.contact_phone or "").split("@")[0].split(":")[0]
         if not phone_raw:
-            return {"error": "Número do contato inválido"}
+            return {"error": "Numero do contato invalido"}
         phone_digits = re.sub(r"\D+", "", phone_raw)
         if not phone_digits:
-            return {"error": "Número do contato inválido"}
-        phone_jid = f"{phone_digits}@g.us" if conv.is_group else phone_digits
+            return {"error": "Numero do contato invalido"}
+        phone_jid = f"{phone_digits}@g.us" if conv.is_group else f"{phone_digits}@c.us"
 
-    # Evolution API sendText espera "number" com apenas digitos (ou id do grupo); nao enviar JID completo
-    if str(phone_jid).endswith("@s.whatsapp.net"):
-        number_for_api = str(phone_jid).replace("@s.whatsapp.net", "").strip()
-    elif conv.is_group and "@g.us" in str(phone_jid):
-        number_for_api = phone_jid
-    else:
-        number_for_api = re.sub(r"\D+", "", str(phone_jid)) or phone_jid
+    chat_id = _normalize_chat_id(phone_jid)
 
-    url = f"{instance.api_url.rstrip('/')}/message/sendText/{instance.instance_name}"
-    headers = {"apikey": instance.api_key, "Content-Type": "application/json"}
-    payload = {"number": number_for_api, "text": text}
-    logger.info("send_message: url=%s payload=%s", url, payload)
+    url = f"{instance.api_url.rstrip('/')}/sendText"
+    headers = {"Content-Type": "application/json"}
+    if instance.api_key:
+        headers["key"] = instance.api_key
+    payload = {"args": {"to": chat_id, "content": text}}
+    logger.info("send_message: url=%s to=%s", url, chat_id)
 
     data = None
-    is_lid = str(phone_jid).endswith("@lid")
-
-    def _error_for_exists_false():
-        if is_lid:
-            return {
-                "error": (
-                    "Este contato usa LID (WhatsApp) e a Evolution API não permite envio por aqui. "
-                    "Envie a mensagem pelo Evolution Manager (http://localhost:8081) ou pelo app WhatsApp. "
-                    f"Alternativa: execute 'python3 scripts/evolution_flush_cache_and_register_lid.py \"{phone_jid}\"', "
-                    "reinicie o container (docker compose up -d evolution) e tente de novo."
-                )
-            }
-        return {
-            "error": (
-                "O WhatsApp não conseguiu localizar este contato. "
-                "Verifique se a instância está conectada (Settings → Instâncias) e tente novamente."
-            )
-        }
-
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            for attempt in range(2):
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code in (200, 201):
-                    data = resp.json()
-                    break
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code in (200, 201):
+                data = resp.json()
+            else:
                 try:
                     body = resp.json()
                 except Exception:
-                    body = {}
-
-                body_dict = body if isinstance(body, dict) else {}
-                resp_data = body_dict.get("response")
-                resp_data = resp_data if isinstance(resp_data, dict) else {}
-                msg_list = resp_data.get("message", [])
-                if not isinstance(msg_list, list):
-                    msg_list = []
-
-                exists_false = (
-                    msg_list
-                    and isinstance(msg_list[0], dict)
-                    and msg_list[0].get("exists") is False
-                )
-                if exists_false:
-                    if is_lid and attempt == 0:
-                        _register_lid_in_evolution_cache(phone_jid)
-                        continue
-                    return _error_for_exists_false()
-
-                # Detecta instância desconectada do WhatsApp
-                resp_msg = resp_data.get("message", "")
-                if isinstance(resp_msg, str) and "connection closed" in resp_msg.lower():
-                    return {
-                        "error": (
-                            "A instância WhatsApp está desconectada. "
-                            "Acesse Configurações → Instâncias, reconecte o QR Code e tente novamente."
-                        )
-                    }
-
-                logger.warning("send_message Evolution API error: %s %s", resp.status_code, body)
-                return {"error": f"Evolution API retornou erro {resp.status_code}: {body}"}
-
+                    body = resp.text[:500]
+                logger.warning("send_message open-wa error: %s %s", resp.status_code, body)
+                return {"error": f"open-wa retornou erro {resp.status_code}: {body}"}
     except httpx.ConnectError:
-        return {"error": "Não foi possível conectar à Evolution API. Verifique a URL da instância."}
+        return {"error": "Nao foi possivel conectar ao open-wa. Verifique a URL da instancia."}
     except httpx.ReadTimeout:
-        return {"error": "A Evolution API demorou para responder. Tente novamente."}
+        return {"error": "O open-wa demorou para responder. Tente novamente."}
     except Exception as e:
         return {"error": str(e)}
 
     # Salva a mensagem enviada no banco local
-    # Evolution API pode retornar dict ou list; extrai key.id
-    payload = data[0] if isinstance(data, list) and data else data
-    evo_id = None
-    if isinstance(payload, dict):
-        key = payload.get("key") or {}
-        evo_id = key.get("id") if isinstance(key, dict) else None
-    if not evo_id:
-        evo_id = f"sent_{uuid.uuid4().hex}"
-        logger.warning("send_message: Evolution API não retornou key.id — usando ID local %s", evo_id)
+    # open-wa retorna {"response": {...message object...}} ou {"response": "messageId"}
+    msg_id = None
+    if isinstance(data, dict):
+        response = data.get("response")
+        if isinstance(response, list) and response:
+            first = response[0]
+            if isinstance(first, dict):
+                msg_id = first.get("id", {}).get("_serialized") if isinstance(first.get("id"), dict) else first.get("id")
+        elif isinstance(response, dict):
+            msg_id = response.get("id", {}).get("_serialized") if isinstance(response.get("id"), dict) else response.get("id")
+        elif isinstance(response, str):
+            msg_id = response
+    if not msg_id:
+        msg_id = f"sent_{uuid.uuid4().hex}"
+        logger.warning("send_message: open-wa nao retornou MessageId — usando ID local %s", msg_id)
+
     now = datetime.utcnow()
     msg = Message(
-        evolution_id=evo_id,
+        evolution_id=msg_id,
         conversation_id=conversation_id,
         direction=MessageDirection.outbound,
         msg_type=MessageType.text,

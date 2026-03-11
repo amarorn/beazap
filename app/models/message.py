@@ -40,6 +40,8 @@ class Message(Base):
     sender_phone = Column(String(30), nullable=True)
     sender_name = Column(String(150), nullable=True)
 
+    message_status = Column(String(20), default="sent", nullable=True)
+
     # Para mensagens de ligação (callLogMessage)
     call_outcome = Column(String(50), nullable=True)
     call_duration_secs = Column(Integer, nullable=True)

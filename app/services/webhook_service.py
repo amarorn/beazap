@@ -11,93 +11,59 @@ from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageDirection, MessageType
 from app.models.attendant import Attendant
 from app.models.instance import Instance
-from app.services.evolution_service import send_text_message
+from app.services.wppconnect_service import send_text_message
 
 
 def _normalize_webhook_data(data: Any) -> List[Dict[str, Any]]:
-    """Normaliza data do webhook: aceita lista, objeto único ou data.messages."""
+    """Normaliza data do webhook open-wa: aceita lista, objeto ou wrapper data/message."""
     if data is None:
         return []
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        if "messages" in data:
-            msgs = data.get("messages") or []
-            return msgs if isinstance(msgs, list) else [msgs]
+        if "chatId" in data or "from" in data:
+            return [data]
+        wrapped = data.get("data") or data.get("message") or data.get("payload")
+        if isinstance(wrapped, dict) and ("chatId" in wrapped or "from" in wrapped):
+            return [wrapped]
+        if isinstance(wrapped, list) and wrapped:
+            return wrapped
         return [data]
     return []
 
 
-def _extract_text(message_content: Dict[str, Any]) -> Optional[str]:
-    if not message_content:
-        return None
-    if "conversation" in message_content:
-        return message_content["conversation"]
-    if "extendedTextMessage" in message_content:
-        return message_content["extendedTextMessage"].get("text")
+def _extract_text_wpp(msg_data: Dict[str, Any]) -> Optional[str]:
+    """Extrai texto de uma mensagem open-wa."""
+    body = msg_data.get("body")
+    if body and isinstance(body, str):
+        return body
+    content = msg_data.get("content")
+    if content and isinstance(content, str):
+        return content
+    caption = msg_data.get("caption")
+    if caption and isinstance(caption, str):
+        return caption
     return None
 
 
-def _get_call_log(message_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if not message_content:
-        return None
-    if "callLogMessage" in message_content:
-        return message_content["callLogMessage"]
-    if "callLogMesssage" in message_content:
-        return message_content["callLogMesssage"]
-    protocol = message_content.get("protocolMessage", {})
-    if isinstance(protocol, dict):
-        if "callLogMessage" in protocol:
-            return protocol["callLogMessage"]
-        if "callLogMesssage" in protocol:
-            return protocol["callLogMesssage"]
-    return None
-
-
-def _format_call_content(call_log: Dict[str, Any], from_me: bool) -> str:
-    outcome = call_log.get("callOutcome")
-    duration = call_log.get("durationSecs")
-    is_video = call_log.get("isVideo", False)
-    if isinstance(duration, dict):
-        duration = duration.get("low") or duration.get("high") or 0
-    outcome_map = {
-        "CONNECTED": "Atendida",
-        "MISSED": "Perdida",
-        "FAILED": "Falhou",
-        "REJECTED": "Rejeitada",
-        "ACCEPTED_ELSEWHERE": "Atendida em outro dispositivo",
-        "ONGOING": "Em andamento",
-        "SILENCED_BY_DND": "Silenciada (não perturbe)",
-        "SILENCED_UNKNOWN_CALLER": "Silenciada (desconhecido)",
-    }
-    label = outcome_map.get(str(outcome), str(outcome) if outcome else "Ligação")
-    parts = [label]
-    if duration and int(duration) > 0:
-        parts.append(f"{int(duration)}s")
-    if is_video:
-        parts.append("(vídeo)")
-    direction = "Enviada" if from_me else "Recebida"
-    return f"{direction}: {' '.join(parts)}"
-
-
-def _get_message_type(message_content: Dict[str, Any]) -> MessageType:
-    if not message_content:
-        return MessageType.other
-    if _get_call_log(message_content):
-        return MessageType.call
-    if "imageMessage" in message_content:
+def _get_message_type_wpp(msg_data: Dict[str, Any]) -> MessageType:
+    """Determina o tipo de mensagem a partir do payload open-wa."""
+    msg_type = str(msg_data.get("type", "")).lower()
+    if msg_type == "image" or msg_data.get("isMedia") and "image" in str(msg_data.get("mimetype", "")):
         return MessageType.image
-    if "videoMessage" in message_content:
+    if msg_type == "video" or msg_data.get("isMedia") and "video" in str(msg_data.get("mimetype", "")):
         return MessageType.video
-    if "audioMessage" in message_content or "pttMessage" in message_content:
+    if msg_type in ("audio", "ptt"):
         return MessageType.audio
-    if "documentMessage" in message_content:
+    if msg_type == "document":
         return MessageType.document
-    if "stickerMessage" in message_content:
+    if msg_type == "sticker":
         return MessageType.sticker
-    if "locationMessage" in message_content:
+    if msg_type == "location" or msg_type == "vcard":
         return MessageType.location
-    return MessageType.text
+    if msg_type in ("chat", ""):
+        return MessageType.text
+    return MessageType.other
 
 
 def _normalize_phone(jid: str) -> str:
@@ -180,68 +146,104 @@ def _get_or_create_conversation(
         return conv, False
 
 
-def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[List[int], List[Tuple[str, str, str, str, str]]]:
-    """Returns (new_conversation_ids, auto_messages_to_send).
-    contact_phone = identificador do chat (numero ou parte do LID). Nao usar sender do body (e o numero da instancia).
+def _extract_message_id(msg_data: Dict[str, Any]) -> Optional[str]:
+    """Extrai o ID unico da mensagem do payload open-wa."""
+    # open-wa: id pode ser string ou objeto {id, remote, fromMe, _serialized}
+    msg_id = msg_data.get("id")
+    if isinstance(msg_id, dict):
+        return msg_id.get("_serialized") or msg_id.get("id")
+    if isinstance(msg_id, str):
+        return msg_id
+    return msg_data.get("messageId")
+
+
+def _extract_chat_id(msg_data: Dict[str, Any]) -> str:
+    """Extrai o chatId (remoteJid equivalente) do payload open-wa."""
+    chat_id = msg_data.get("chatId") or msg_data.get("from") or ""
+    if isinstance(chat_id, dict):
+        return chat_id.get("_serialized", "")
+    return str(chat_id)
+
+
+def _extract_from_me(msg_data: Dict[str, Any]) -> bool:
+    """Extrai fromMe do payload open-wa."""
+    from_me = msg_data.get("fromMe")
+    if from_me is not None:
+        return bool(from_me)
+    msg_id = msg_data.get("id")
+    if isinstance(msg_id, dict):
+        return bool(msg_id.get("fromMe", False))
+    return False
+
+
+def _extract_sender_info(msg_data: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """Retorna (sender_phone, sender_name) para mensagens de grupo."""
+    sender = msg_data.get("sender") or msg_data.get("author") or {}
+    if isinstance(sender, dict):
+        sender_id = sender.get("id")
+        if isinstance(sender_id, dict):
+            phone = sender_id.get("user") or _normalize_phone(sender_id.get("_serialized", ""))
+        elif isinstance(sender_id, str):
+            phone = _normalize_phone(sender_id)
+        else:
+            phone = None
+        name = sender.get("pushname") or sender.get("name") or sender.get("formattedName")
+        return phone, name
+    if isinstance(sender, str):
+        return _normalize_phone(sender), None
+    return None, None
+
+
+def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[List[int], List[Tuple[str, str, str, str, str]], List[int]]:
+    """Processa mensagens recebidas via webhook open-wa.
+    Returns (new_conversation_ids, auto_messages_to_send, affected_conversation_ids).
     """
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
-        return [], []
+        logger.warning("webhook: instancia nao encontrada instance_name=%r (crie instancia com esse nome)", instance_name)
+        return [], [], []
 
     messages_data = _normalize_webhook_data(data)
     if get_settings().DEBUG and messages_data:
-        logger = logging.getLogger(__name__)
         for m in messages_data:
-            content = m.get("message") or {}
-            keys = list(content.keys()) if content else []
-            msg_type = "call" if _get_call_log(content) else (keys[0] if keys else "empty")
-            logger.debug(f"webhook messages.upsert: instance={instance_name} type={msg_type} keys={keys[:5]}")
+            msg_type = m.get("type", "unknown")
+            logger.debug(f"webhook onmessage: instance={instance_name} type={msg_type}")
 
     new_conversation_ids: List[int] = []
     auto_messages_to_send: List[Tuple[str, str, str, str, str]] = []
+    affected_conv_ids: List[int] = []
     for msg_data in messages_data:
-        key = msg_data.get("key", {})
-        evolution_id = key.get("id")
-        remote_jid = key.get("remoteJid", "")
-        remote_jid_alt = key.get("remoteJidAlt", "").strip() or None
-        from_me = key.get("fromMe", False)
+        external_id = _extract_message_id(msg_data)
+        if not external_id:
+            if get_settings().DEBUG:
+                logger.debug("webhook: mensagem ignorada sem id msg_data keys=%s", list(msg_data.keys())[:20])
+            continue
 
-        is_group = "@g.us" in remote_jid
-        contact_send_jid = None
-        if not is_group and remote_jid.endswith("@lid") and remote_jid_alt:
-            # Nao usar remoteJidAlt se for o numero da propria instancia (atendimento), nao do cliente
-            alt_digits = _digits_only(_normalize_phone(remote_jid_alt))
-            instance_phone_digits = _digits_only(instance.phone_number) if instance.phone_number else ""
-            if alt_digits and alt_digits != instance_phone_digits:
-                contact_send_jid = remote_jid_alt
-            # senao remoteJidAlt e o numero do atendimento, ignorar
+        chat_id = _extract_chat_id(msg_data)
+        from_me = _extract_from_me(msg_data)
 
-        existing = db.query(Message).filter(Message.evolution_id == evolution_id).first()
+        is_group = msg_data.get("isGroupMsg", False) or "@g.us" in chat_id
+
+        existing = db.query(Message).filter(Message.evolution_id == external_id).first()
         if existing:
             continue
 
-        push_name = msg_data.get("pushName")
-        message_content = msg_data.get("message") or {}
-        timestamp_raw = msg_data.get("messageTimestamp", 0)
+        push_name = msg_data.get("notifyName") or (msg_data.get("sender") or {}).get("pushname") if isinstance(msg_data.get("sender"), dict) else None
+        timestamp_raw = msg_data.get("timestamp") or msg_data.get("t") or 0
         timestamp = datetime.utcfromtimestamp(int(timestamp_raw)) if timestamp_raw else datetime.utcnow()
 
         direction = MessageDirection.outbound if from_me else MessageDirection.inbound
-        msg_type = _get_message_type(message_content)
-        call_log = _get_call_log(message_content) if msg_type == MessageType.call else None
-        if call_log:
-            text = _format_call_content(call_log, from_me)
-        else:
-            text = _extract_text(message_content)
+        msg_type = _get_message_type_wpp(msg_data)
+        text = _extract_text_wpp(msg_data)
+
+        contact_phone = _normalize_phone(chat_id)
+        contact_jid = chat_id
 
         if is_group:
-            contact_phone = _normalize_phone(remote_jid)
             contact_name = None
-            participant = key.get("participant", "")
-            sender_phone = _normalize_phone(participant) if participant and not from_me else None
-            sender_name = push_name if not from_me else None
+            sender_phone, sender_name = _extract_sender_info(msg_data) if not from_me else (None, None)
             attendant_id = None
         else:
-            contact_phone = _normalize_phone(remote_jid)
             contact_name = push_name if not from_me else None
             sender_phone = None
             sender_name = None
@@ -251,8 +253,6 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             ).first()
             attendant_id = attendant.id if attendant else None
 
-        # Outbound messages from webhook never create a new conversation —
-        # they should only be appended to an existing open one.
         conv, is_new = _get_or_create_conversation(
             db=db,
             contact_phone=contact_phone,
@@ -262,12 +262,10 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             now=timestamp,
             is_group=is_group,
             create_if_missing=(direction == MessageDirection.inbound),
-            contact_jid=remote_jid,
-            contact_send_jid=contact_send_jid,
+            contact_jid=contact_jid,
         )
 
         if conv is None:
-            # Outbound message with no matching open conversation — skip
             continue
 
         if is_new and direction == MessageDirection.inbound and not is_group:
@@ -275,27 +273,17 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             if instance.auto_message_enabled and instance.auto_message_text:
                 attendant_name = attendant.name if attendant else "Atendente"
                 msg_text = instance.auto_message_text.replace("{nome_atendente}", attendant_name)
-                send_jid = (conv.contact_send_jid or conv.contact_jid or remote_jid or contact_phone)
+                send_phone = conv.contact_jid or chat_id or contact_phone
                 auto_messages_to_send.append((
                     instance.api_url,
                     instance.api_key,
                     instance.instance_name,
-                    send_jid,
+                    send_phone,
                     msg_text,
                 ))
 
-        call_outcome = None
-        call_duration_secs = None
-        is_video_call = None
-        if call_log:
-            call_outcome = str(call_log.get("callOutcome", "")) if call_log.get("callOutcome") else None
-            dur = call_log.get("durationSecs")
-            if dur is not None:
-                call_duration_secs = int(dur) if not isinstance(dur, dict) else int(dur.get("low") or dur.get("high") or 0)
-            is_video_call = call_log.get("isVideo")
-
         message = Message(
-            evolution_id=evolution_id,
+            evolution_id=external_id,
             conversation_id=conv.id,
             direction=direction,
             msg_type=msg_type,
@@ -303,11 +291,9 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             timestamp=timestamp,
             sender_phone=sender_phone,
             sender_name=sender_name,
-            call_outcome=call_outcome,
-            call_duration_secs=call_duration_secs,
-            is_video_call=is_video_call,
         )
         db.add(message)
+        affected_conv_ids.append(conv.id)
 
         if direction == MessageDirection.inbound:
             conv.inbound_count = (conv.inbound_count or 0) + 1
@@ -319,31 +305,33 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
                 conv.first_response_time_seconds = delta
 
     db.commit()
-    return new_conversation_ids, auto_messages_to_send
+    return new_conversation_ids, auto_messages_to_send, list(dict.fromkeys(affected_conv_ids))
 
 
-def send_auto_message_task(api_url: str, api_key: str, instance_name: str, contact_phone: str, msg_text: str) -> None:
-    """Envia mensagem automatica em background. Loga sucesso ou falha."""
-    ok = send_text_message(api_url, api_key, instance_name, contact_phone, msg_text)
+def send_auto_message_task(api_url: str, token: str, session: str, contact_phone: str, msg_text: str) -> None:
+    """Envia mensagem automatica em background via open-wa."""
+    ok = send_text_message(api_url, token, session, contact_phone, msg_text)
     if ok:
-        logger.info("Mensagem automatica enviada para %s (instance=%s)", contact_phone, instance_name)
+        logger.info("Mensagem automatica enviada para %s (session=%s)", contact_phone, session)
     else:
-        logger.warning("Falha ao enviar mensagem automatica para %s (instance=%s)", contact_phone, instance_name)
+        logger.warning("Falha ao enviar mensagem automatica para %s (session=%s)", contact_phone, session)
 
 
 def process_groups_upsert(db: Session, instance_name: str, data: Any):
-    """Trata eventos groups.upsert e groups.update — salva/atualiza nome e imagem do grupo."""
+    """Trata eventos de grupo open-wa (onparticipantschanged etc)."""
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
         return
 
     groups_data = data if isinstance(data, list) else [data]
     for group_data in groups_data:
-        group_id = group_data.get("id", "")
+        group_id = group_data.get("id") or group_data.get("chatId") or ""
+        if isinstance(group_id, dict):
+            group_id = group_id.get("_serialized", "")
         if not group_id:
             continue
-        subject = group_data.get("subject") or group_data.get("name")
-        picture_url = group_data.get("pictureUrl") or group_data.get("picture")
+        subject = group_data.get("subject") or group_data.get("name") or group_data.get("groupMetadata", {}).get("subject")
+        picture_url = group_data.get("pictureUrl") or group_data.get("profilePicThumbObj", {}).get("img")
 
         contact_phone = _normalize_phone(group_id)
         conv = (
@@ -375,7 +363,7 @@ CALL_STATUS_TO_OUTCOME = {
 
 
 def _format_call_event_content(status: str, is_video: bool, from_me: bool) -> str:
-    outcome = CALL_STATUS_TO_OUTCOME.get(status, status or "Ligação")
+    outcome = CALL_STATUS_TO_OUTCOME.get(status, status or "Ligacao")
     if from_me:
         label_map = {
             "INCOMING": "Enviada: Chamada iniciada",
@@ -396,12 +384,12 @@ def _format_call_event_content(status: str, is_video: bool, from_me: bool) -> st
         }
     label = label_map.get(outcome, outcome)
     if is_video:
-        label += " (vídeo)"
+        label += " (video)"
     return label
 
 
 def process_call_event(db: Session, instance_name: str, body: Any):
-    """Trata evento 'call' da Evolution API (ligações em tempo real)."""
+    """Trata evento 'incomingcall' do open-wa."""
     instance = db.query(Instance).filter(Instance.instance_name == instance_name).first()
     if not instance:
         return
@@ -409,47 +397,27 @@ def process_call_event(db: Session, instance_name: str, body: Any):
     if not body or not isinstance(body, dict):
         return
 
-    data = body.get("data") or body
-    if not data or not isinstance(data, dict):
-        return
-
-    from_me = data.get("fromMe", body.get("fromMe", False))
-    is_incoming = data.get("isIncoming", body.get("isIncoming"))
-    if isinstance(from_me, str):
-        from_me = from_me.lower() in ("true", "1", "yes")
-    if is_incoming is not None:
-        if isinstance(is_incoming, str):
-            is_incoming = is_incoming.lower() in ("true", "1", "yes")
-        from_me = not is_incoming
-
-    call_id = data.get("id")
+    call_id = body.get("id") or body.get("peerJid")
     if not call_id:
         return
 
-    evolution_id = f"call_{call_id}"
-    existing = db.query(Message).filter(Message.evolution_id == evolution_id).first()
+    external_id = f"call_{call_id}"
+    existing = db.query(Message).filter(Message.evolution_id == external_id).first()
 
-    contact_jid = data.get("from") or data.get("chatId") or ""
+    contact_jid = body.get("peerJid") or body.get("from") or body.get("chatId") or ""
     contact_phone = _normalize_phone(contact_jid)
     if not contact_phone:
         return
 
-    status = data.get("status", "")
-    is_video = data.get("isVideo", False)
-    is_group = data.get("isGroup", False)
+    is_video = body.get("isVideo", False)
+    is_group = body.get("isGroup", False)
     if is_group:
         return
 
-    date_val = data.get("date")
-    if isinstance(date_val, str):
-        try:
-            ts = datetime.fromisoformat(date_val.replace("Z", "+00:00"))
-            timestamp = ts.replace(tzinfo=None) if ts.tzinfo else ts
-        except Exception:
-            timestamp = datetime.utcnow()
-    else:
-        timestamp = datetime.utcnow()
+    from_me = body.get("fromMe", False)
+    timestamp = datetime.utcnow()
 
+    status = body.get("offerCall", "offer")
     outcome = CALL_STATUS_TO_OUTCOME.get(status, status)
     content = _format_call_event_content(status, is_video, from_me)
     direction = MessageDirection.outbound if from_me else MessageDirection.inbound
@@ -478,7 +446,7 @@ def process_call_event(db: Session, instance_name: str, body: Any):
         existing.direction = direction
     else:
         message = Message(
-            evolution_id=evolution_id,
+            evolution_id=external_id,
             conversation_id=conv.id,
             direction=direction,
             msg_type=MessageType.call,
@@ -497,16 +465,25 @@ def process_call_event(db: Session, instance_name: str, body: Any):
     db.commit()
 
 
-def process_message_update(db: Session, instance_name: str, data: Any):
-    updates = data if isinstance(data, list) else [data]
-    for update in updates:
-        key = update.get("key", {})
-        evolution_id = key.get("id")
-        status = update.get("update", {}).get("status")
+def process_message_revoked(db: Session, instance_name: str, data: Any) -> List[int]:
+    """Trata evento 'onrevokedmessage' do open-wa (mensagem apagada). Retorna lista de conversation_ids afetados."""
+    if not data or not isinstance(data, dict):
+        return []
+    msg_id = data.get("refId") or data.get("msgId")
+    if isinstance(msg_id, dict):
+        msg_id = msg_id.get("_serialized") or msg_id.get("id")
+    if not msg_id:
+        return []
+    msg = db.query(Message).filter(Message.evolution_id == msg_id).first()
+    if msg:
+        conv_id = msg.conversation_id
+        msg.is_deleted = True
+        db.commit()
+        return [conv_id]
+    return []
 
-        if evolution_id and status == "DELETED":
-            msg = db.query(Message).filter(Message.evolution_id == evolution_id).first()
-            if msg:
-                msg.is_deleted = True
 
-    db.commit()
+def process_message_ack(db: Session, instance_name: str, data: Any):
+    """Trata evento 'onack' do open-wa (status de leitura/entrega)."""
+    # Por enquanto apenas loga; pode ser expandido para rastrear status
+    pass

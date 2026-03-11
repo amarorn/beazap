@@ -161,7 +161,7 @@ class InstanceCreate(BaseModel):
     name: str
     instance_name: str
     api_url: str
-    api_key: str
+    api_key: Optional[str] = None
     phone_number: Optional[str] = None
     owner_email: Optional[str] = None
 

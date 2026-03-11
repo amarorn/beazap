@@ -115,7 +115,7 @@ export default function ContactsPage() {
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Contatos</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Base de clientes que entraram em contato e foram salvos pelos atendentes. Em contatos LID o número real só aparece se a Evolution enviar remoteJidAlt no webhook; senão, edite o contato e preencha o telefone manualmente.
+            Base de clientes que entraram em contato e foram salvos pelos atendentes. Edite o contato para preencher o telefone manualmente se necessario.
           </p>
         </div>
       </div>

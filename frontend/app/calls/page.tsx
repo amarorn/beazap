@@ -111,7 +111,7 @@ export default function CallsPage() {
               {!isLoading && calls.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center text-zinc-400 dark:text-zinc-500">
-                    Nenhuma ligação registrada. As ligações aparecem aqui quando a Evolution API envia eventos de ligação (call ou callLogMessage).
+                    Nenhuma ligacao registrada. As ligacoes aparecem aqui quando o open-wa envia eventos de chamada (incomingcall).
                   </td>
                 </tr>
               )}

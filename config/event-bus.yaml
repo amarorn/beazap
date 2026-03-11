@@ -1,0 +1,17 @@
+# Kafka/Redpanda topic config - Fase 1
+topics:
+  - name: wa.raw-events
+    partitions: 3
+    description: "Eventos brutos do webhook (WPPConnect)"
+  - name: wa.normalized-events
+    partitions: 3
+    description: "Eventos normalizados (message.received)"
+  - name: message.outbound.requested
+    partitions: 3
+    description: "Solicitacao de envio de mensagem"
+  - name: message.outbound.sent
+    partitions: 3
+    description: "Mensagem enviada com sucesso"
+  - name: message.outbound.failed
+    partitions: 3
+    description: "Falha no envio"

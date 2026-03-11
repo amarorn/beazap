@@ -11,16 +11,8 @@ import type { Instance } from '@/types'
 const QR_REFRESH_INTERVAL = 30_000 // 30s — QR expira em ~45s
 const STATUS_CHECK_INTERVAL = 5_000 // 5s — verifica se conectou
 
-const RECOMMENDED_EVENTS = [
-  'MESSAGES_UPSERT',
-  'MESSAGES_UPDATE',
-  'MESSAGES_DELETE',
-  'CALL',
-  'QRCODE_UPDATED',
-  'CONNECTION_UPDATE',
-  'GROUPS_UPSERT',
-  'GROUP_UPDATE',
-  'GROUP_PARTICIPANTS_UPDATE',
+const _OPENWA_EVENTS = [
+  // open-wa events are handled automatically via webhook env var
   'SEND_MESSAGE',
 ]
 
@@ -29,6 +21,14 @@ function toQrDataUrl(value: string): string {
   const s = value.trim()
   if (s.startsWith('data:')) return s
   return `data:image/png;base64,${s}`
+}
+
+function formatApiDetail(data: unknown): string {
+  if (data == null) return ''
+  if (typeof data === 'string') return data
+  if (Array.isArray(data)) return data.map((x: unknown) => (typeof x === 'object' && x && 'msg' in x ? String((x as { msg: string }).msg) : String(x))).join(' ')
+  if (typeof data === 'object' && 'detail' in data) return formatApiDetail((data as { detail: unknown }).detail)
+  return String(data)
 }
 
 function QrCodeModal({
@@ -196,7 +196,7 @@ function InstanceStatusBadge({ state, error }: { state: string; error?: string }
   return null
 }
 
-type UpdateResult = { evolution_created?: boolean; evolution_error?: string; qrcode?: string | null }
+type UpdateResult = { api_error?: string; qrcode?: string | null }
 function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: () => void; onUpdate: (data: { name?: string; api_url?: string; api_key?: string; phone_number?: string; owner_email?: string }) => Promise<UpdateResult | void> }) {
   const [checking, setChecking] = useState(false)
   const [status, setStatus] = useState<{ state: string; error?: string; api_url?: string } | null>(null)
@@ -213,7 +213,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
   const [qrError, setQrError] = useState<string | null>(null)
   const [emailSending, setEmailSending] = useState(false)
   const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string } | null>(null)
-  const [updateEvolutionResult, setUpdateEvolutionResult] = useState<UpdateResult | null>(null)
+  const [updateApiResult, setUpdateApiResult] = useState<UpdateResult | null>(null)
 
   const inputClass = "w-full text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
 
@@ -232,12 +232,34 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
   async function handleShowQr() {
     setQrLoading(true)
     setQrError(null)
+    const waitAfter503Ms = 25000
+    let lastMsg = 'Não foi possível obter o QR Code.'
     try {
-      const result = await instancesApi.getQrCode(inst.id)
-      setQrModal({ qrcode: toQrDataUrl(result.qrcode) })
+      try {
+        const result = await instancesApi.getQrCode(inst.id)
+        if (result.qrcode) {
+          setQrModal({ qrcode: toQrDataUrl(result.qrcode) })
+          return
+        }
+      } catch (err: unknown) {
+        const ax = err as { response?: { status?: number; data?: { detail?: unknown } } }
+        const detail = formatApiDetail(ax.response?.data?.detail)
+        if (detail) lastMsg = detail
+        if (ax.response?.status === 503) {
+          setQrError('Primeira tentativa retornou 503. O backend já espera até ~90s no WPPConnect. Nova tentativa em 25s…')
+          await new Promise(r => setTimeout(r, waitAfter503Ms))
+          const result2 = await instancesApi.getQrCode(inst.id)
+          if (result2.qrcode) {
+            setQrModal({ qrcode: toQrDataUrl(result2.qrcode) })
+            return
+          }
+        }
+        throw err
+      }
+      setQrError(lastMsg)
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? 'Não foi possível obter o QR Code.'
+      const ax = err as { response?: { data?: { detail?: unknown } } }
+      const msg = formatApiDetail(ax.response?.data?.detail) || lastMsg
       setQrError(msg)
     } finally {
       setQrLoading(false)
@@ -260,7 +282,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
   }
 
   async function handleSave() {
-    setUpdateEvolutionResult(null)
+    setUpdateApiResult(null)
     try {
       const result = await onUpdate({
         name: editForm.name || undefined,
@@ -270,7 +292,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
         owner_email: editForm.owner_email,
       })
       setEditing(false)
-      if (result) setUpdateEvolutionResult(result)
+      if (result) setUpdateApiResult(result)
     } catch {
       setEditing(false)
     }
@@ -357,7 +379,7 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
               <Mail className={`w-3.5 h-3.5 ${emailSending ? 'animate-pulse' : ''}`} />
             </button>
             <button
-              onClick={() => { setEditing(true); setUpdateEvolutionResult(null) }}
+              onClick={() => { setEditing(true); setUpdateApiResult(null) }}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
               title="Editar instância"
             >
@@ -373,9 +395,23 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
           </div>
         </div>
         {qrError && (
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 rounded-lg px-2.5 py-1.5">
-            {qrError}
-          </p>
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
+            <div className="max-h-36 overflow-y-auto px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300 whitespace-pre-wrap break-words">
+              {qrError}
+            </div>
+            <div className="flex gap-2 px-2.5 pb-2 pt-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-[11px] text-amber-700 dark:text-amber-400"
+                onClick={() => { setQrError(null); handleShowQr() }}
+                disabled={qrLoading}
+              >
+                Tentar QR de novo
+              </Button>
+            </div>
+          </div>
         )}
         {emailResult && (
           <p className={`text-[11px] rounded-lg px-2.5 py-1.5 flex items-center gap-1 ${emailResult.ok ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10'}`}>
@@ -383,24 +419,24 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
             {emailResult.msg}
           </p>
         )}
-        {updateEvolutionResult && (
+        {updateApiResult && (
           <div className="space-y-1">
-            {updateEvolutionResult.evolution_created && (
+            {updateApiResult.qrcode && !updateApiResult.api_error && (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
-                Instância criada/atualizada na Evolution API.
+                Instancia atualizada. QR Code disponivel.
               </p>
             )}
-            {updateEvolutionResult.evolution_error && (
+            {updateApiResult.api_error && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
                 <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                <span>Evolution API: {updateEvolutionResult.evolution_error}</span>
+                <span>open-wa: {updateApiResult.api_error}</span>
               </p>
             )}
-            {updateEvolutionResult.qrcode && (
+            {updateApiResult.qrcode && (
               <button
                 type="button"
-                onClick={() => setQrModal({ qrcode: toQrDataUrl(updateEvolutionResult.qrcode!) })}
+                onClick={() => setQrModal({ qrcode: toQrDataUrl(updateApiResult.qrcode!) })}
                 className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
               >
                 <QrCode className="w-3 h-3" /> Ver QR Code
@@ -481,36 +517,24 @@ export default function InstancesPage() {
     queryFn: instancesApi.list,
   })
 
-  const DEFAULT_API_URL = 'http://localhost:8080'
-  const DEFAULT_API_KEY = 'beazap-secret-2026'
+  const DEFAULT_API_URL = 'http://localhost:21465'
+  const DEFAULT_API_KEY = ''
 
   const [instForm, setInstForm] = useState({
     name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '',
   })
   const [newInstQrcode, setNewInstQrcode] = useState<{ instanceId: number; instanceName: string; qrcode: string } | null>(null)
-  const [webhookAutoResult, setWebhookAutoResult] = useState<{ ok: boolean; url?: string } | null>(null)
+  const [_webhookAutoResult] = useState<null>(null) // open-wa: webhook via config.json
 
   const createInstance = useMutation({
     mutationFn: instancesApi.create,
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-      setInstForm({ name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: DEFAULT_API_KEY, phone_number: '', owner_email: '' })
+      setInstForm({ name: '', instance_name: '', api_url: DEFAULT_API_URL, api_key: '', phone_number: '', owner_email: '' })
       if (data.qrcode) {
         setNewInstQrcode({ instanceId: data.id, instanceName: data.instance_name, qrcode: data.qrcode })
       }
-      // Auto-configura webhook com todos os eventos recomendados
-      try {
-        const serverUrl =
-          (typeof window !== 'undefined' && localStorage.getItem('webhook_server_url')) ||
-          'http://host.docker.internal:8000'
-        const res = await instancesApi.configureWebhook(data.id, {
-          server_url: serverUrl,
-          events: RECOMMENDED_EVENTS,
-        })
-        setWebhookAutoResult({ ok: true, url: res.webhook_url })
-      } catch {
-        setWebhookAutoResult({ ok: false })
-      }
+      // Webhook is configured via open-wa env var, no auto-config needed
     },
   })
 
@@ -610,15 +634,15 @@ export default function InstancesPage() {
             )}
             {createInstance.isSuccess && (
               <div className="space-y-1.5 pt-1">
-                {createInstance.data?.evolution_created ? (
+                {createInstance.data?.qrcode ? (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
-                    Instância criada na Evolution API com sucesso.
+                    Instancia criada com sucesso. QR Code disponivel.
                   </p>
-                ) : createInstance.data?.evolution_error ? (
+                ) : createInstance.data?.api_error ? (
                   <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
                     <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                    <span>Evolution API: {createInstance.data.evolution_error}</span>
+                    <span>open-wa: {createInstance.data.api_error}</span>
                   </p>
                 ) : null}
                 {!createInstance.data?.qrcode && (
@@ -637,18 +661,9 @@ export default function InstancesPage() {
                     <Mail className="w-3 h-3 flex-shrink-0" /> Falha ao enviar email. Verifique as configurações SMTP.
                   </p>
                 )}
-                {webhookAutoResult?.ok && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
-                    Webhook configurado automaticamente ({RECOMMENDED_EVENTS.length} eventos).
-                  </p>
-                )}
-                {webhookAutoResult && !webhookAutoResult.ok && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                    <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                    Webhook não configurado. Configure manualmente em Webhooks.
-                  </p>
-                )}
+                <p className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                  Webhook e configurado via flag -w no docker-compose.
+                </p>
               </div>
             )}
           </div>

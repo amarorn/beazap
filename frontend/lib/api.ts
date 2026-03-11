@@ -243,28 +243,17 @@ export const translationApi = {
 export const instancesApi = {
   list: () => api.get<Instance[]>('/api/instances').then(r => r.data),
   create: (data: { name: string; instance_name: string; api_url: string; api_key: string; phone_number?: string; owner_email?: string }) =>
-    api.post<Instance & { qrcode?: string; evolution_created?: boolean; evolution_error?: string; email_sent?: boolean | null }>('/api/instances', data).then(r => r.data),
+    api.post<Instance & { qrcode?: string; api_error?: string; email_sent?: boolean | null }>('/api/instances', data).then(r => r.data),
   update: (id: number, data: { name?: string; api_url?: string; api_key?: string; phone_number?: string; owner_email?: string }) =>
-    api.put<Instance & { evolution_created?: boolean; evolution_error?: string; qrcode?: string | null }>(`/api/instances/${id}`, data).then(r => r.data),
+    api.put<Instance & { api_error?: string; qrcode?: string | null }>(`/api/instances/${id}`, data).then(r => r.data),
   delete: (id: number) => api.delete(`/api/instances/${id}`).then(r => r.data),
   checkStatus: (id: number) =>
     api.get<{ state: string; error?: string; api_url?: string; instance_name?: string }>(`/api/instances/${id}/status`).then(r => r.data),
   getQrCode: (id: number) =>
-    api.get<{ qrcode: string }>(`/api/instances/${id}/qrcode`).then(r => r.data),
-  configureWebhook: (
-    id: number,
-    data: {
-      server_url: string
-      webhook_by_events?: boolean
-      webhook_base64?: boolean
-      events?: string[]
-    }
-  ) =>
     api
-      .post<{ status: string; webhook_url: string }>(`/api/instances/${id}/webhook`, data)
+      .get<{ qrcode: string }>(`/api/instances/${id}/qrcode`, { timeout: 120000 })
       .then(r => r.data),
-  getWebhook: (id: number) =>
-    api.get<{ url?: string; events?: string[] }>(`/api/instances/${id}/webhook`).then(r => r.data),
+  // Webhook is configured via open-wa env var, no API endpoint needed
   sendQrCodeEmail: (id: number, email?: string) =>
     api.post<{ status: string; email: string }>(`/api/instances/${id}/send-qrcode-email`, email ? { email } : {}).then(r => r.data),
   getAutoMessage: (id: number) =>

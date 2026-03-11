@@ -20,12 +20,10 @@ function formatWait(seconds: number) {
 }
 
 function useSlaThreshold(): number {
-  const [threshold, setThreshold] = useState(() => {
-    if (typeof window === 'undefined') return 30
-    const stored = localStorage.getItem('sla_threshold_minutes')
-    return stored ? parseInt(stored, 10) : 30
-  })
+  const [threshold, setThreshold] = useState(30)
   useEffect(() => {
+    const stored = localStorage.getItem('sla_threshold_minutes')
+    if (stored) setThreshold(parseInt(stored, 10))
     const handler = () => {
       const updated = localStorage.getItem('sla_threshold_minutes')
       if (updated) setThreshold(parseInt(updated, 10))

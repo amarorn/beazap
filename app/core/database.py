@@ -33,7 +33,7 @@ def get_db():
 def create_tables():
     from app.models import instance, attendant, conversation, message, team  # noqa
     from app.models import quick_reply, conversation_note, report, contact  # noqa
-    from app.models import databricks  # noqa
+    from app.models import databricks, tenant, processed_event  # noqa
     Base.metadata.create_all(bind=engine)
 
 
@@ -84,7 +84,15 @@ def run_migrations():
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} contact_jid VARCHAR(80)",
         f"ALTER TABLE conversations ADD COLUMN {if_not_exists} contact_send_jid VARCHAR(80)",
         f"ALTER TABLE conversation_notes ADD COLUMN {if_not_exists} note_type VARCHAR(20) DEFAULT 'manual'",
+        # Event-driven phase 1
+        f"ALTER TABLE instances ADD COLUMN {if_not_exists} tenant_id INTEGER",
+        f"ALTER TABLE messages ADD COLUMN {if_not_exists} message_status VARCHAR(20) DEFAULT 'sent'",
     ]
+    if not _is_sqlite:
+        migrations.extend([
+            "CREATE TABLE IF NOT EXISTS tenants (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, created_at TIMESTAMP DEFAULT NOW())",
+            "CREATE TABLE IF NOT EXISTS processed_events (id SERIAL PRIMARY KEY, provider VARCHAR(50) NOT NULL, event_key VARCHAR(255) NOT NULL, processed_at TIMESTAMP DEFAULT NOW(), UNIQUE(provider, event_key))",
+        ])
     with engine.connect() as conn:
         for sql in migrations:
             try:

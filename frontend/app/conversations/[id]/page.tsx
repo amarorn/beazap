@@ -8,7 +8,7 @@ import { formatResponseTime, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  ArrowLeft, Phone, User, Clock, CheckCircle, Sparkles, Send, Lock,
+  Phone, User, Clock, CheckCircle, Sparkles, Send, Lock,
   CalendarDays, Users, Zap, StickyNote, Trash2, Plus, X, Loader2, Globe,
   Copy, ExternalLink, UserPlus, ChevronDown, ChevronRight,
 } from 'lucide-react'
@@ -325,30 +325,20 @@ export default function ConversationDetailPage() {
   return (
     <div
       className={cn(
-        'flex gap-4 mx-auto w-full transition-[max-width] duration-300',
+        'flex gap-4 h-full w-full p-6 transition-[max-width] duration-300 overflow-hidden',
         showSuggestionPanel ? 'max-w-5xl' : 'max-w-3xl'
       )}
-      style={{ height: 'calc(100vh - 7rem)' }}
     >
       {/* ── Main chat column ── */}
       <div className="flex flex-col flex-1 min-w-0">
 
-        {/* ── Header ── */}
-        <div className="flex items-center gap-3 mb-3 flex-shrink-0">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06] transition-colors flex-shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/20 select-none">
-            <span className="text-white font-bold text-sm tracking-wide">
+        {/* ── Header do Chat (estilo AtendimentoModerno) ── */}
+        <div className="h-16 border-b border-zinc-200 dark:border-zinc-700 px-6 flex items-center justify-between bg-white dark:bg-zinc-900 shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-lg shadow-emerald-500/20">
               {getInitials(conversation.contact_name, conversation.contact_phone)}
-            </span>
-          </div>
-
-          <div className="flex-1 min-w-0">
+            </div>
+            <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-base font-bold text-zinc-900 dark:text-zinc-50 truncate leading-tight">
                 {conversation.contact_name || conversation.contact_phone}
@@ -359,8 +349,8 @@ export default function ConversationDetailPage() {
               </span>
             </div>
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">{conversation.contact_phone}</p>
+            </div>
           </div>
-
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <Button
               size="sm"
@@ -762,8 +752,8 @@ export default function ConversationDetailPage() {
               const err = sendMutation.error as { response?: { data?: { detail?: string | string[] } } }
               const d = err?.response?.data?.detail
               const msg = typeof d === 'string' ? d : (Array.isArray(d) && d.length ? d[0] : 'Erro ao enviar mensagem')
-              const isLidError = typeof msg === 'string' && (msg.includes('LID') || msg.includes('Evolution Manager'))
-              const managerUrl = process.env.NEXT_PUBLIC_EVOLUTION_MANAGER_URL || 'http://localhost:8081'
+              const isLidError = typeof msg === 'string' && msg.includes('LID')
+              const managerUrl = ''
               return (
                 <div className="mt-2 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/80 dark:bg-red-900/10 px-3 py-2.5 space-y-2">
                   <p className="text-xs text-red-700 dark:text-red-300">{msg}</p>
@@ -789,7 +779,7 @@ export default function ConversationDetailPage() {
                           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 dark:bg-red-500/20 border border-red-300/60 dark:border-red-700/50 text-red-700 dark:text-red-300 hover:bg-red-500/20 dark:hover:bg-red-500/30 transition-colors"
                         >
                           <ExternalLink className="w-3 h-3" />
-                          Enviar pelo Evolution Manager
+                          Enviar pelo WhatsApp
                         </a>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-red-200/60 dark:border-red-800/40">

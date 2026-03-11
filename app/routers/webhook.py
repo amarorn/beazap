@@ -1,96 +1,125 @@
+import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.schemas.webhook import WebhookPayload
 from app.services import webhook_service
 from app.services.routing_service import route_conversation
 from app.services import databricks_service
+from app.services.wppconnect_service import store_qrcode
 from app.core.events import broadcast
 from app.models.instance import Instance
 
-EVENT_PATH_TO_EVENT = {
-    "presence-update": "presence.update",
-    "chats-update": "chats.update",
-    "chats-upsert": "chats.upsert",
-    "chats-set": "chats.set",
-    "chats-delete": "chats.delete",
-    "messages-upsert": "messages.upsert",
-    "messages-update": "messages.update",
-    "messages-delete": "messages.delete",
-    "messages-set": "messages.set",
-    "contacts-update": "contacts.update",
-    "contacts-upsert": "contacts.upsert",
-    "contacts-set": "contacts.set",
-    "connection-update": "connection.update",
-    "groups-upsert": "groups.upsert",
-    "groups-update": "groups.update",
-    "group-update": "group.update",
-    "group-participants-update": "group.participants.update",
-    "qrcode-updated": "qrcode.updated",
-    "application-startup": "application.startup",
-    "logout-instance": "logout.instance",
-    "remove-instance": "remove.instance",
-    "call": "call",
-    "send-message": "send.message",
-    "labels-association": "labels.association",
-    "labels-edit": "labels.edit",
-    "typebot-change-status": "typebot.change.status",
-    "typebot-start": "typebot.start",
-}
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
-def _kebab_to_dot(s: str) -> str:
-    return s.replace("-", ".") if s else ""
+def _detect_event(body: dict) -> str:
+    """Detecta o tipo de evento a partir do payload open-wa.
+
+    O open-wa envia o objeto Message diretamente para o webhook.
+    Eventos especiais (qr, STARTUP, etc) vem com campo 'event' ou 'namespace'.
+    """
+    # open-wa event flags (qr, STARTUP, MD_DETECT, etc.)
+    if "event" in body:
+        return body["event"]
+    ns = body.get("namespace", "")
+    if ns:
+        return ns
+    # incoming call has peerJid/offerCall fields
+    if "peerJid" in body or "offerCall" in body:
+        return "incomingcall"
+    # message: has 'id', 'chatId' or 'from', 'body' or 'type'
+    if "chatId" in body or "from" in body:
+        return "onmessage"
+    # Revoked message
+    if "revokedMsgId" in body or "refId" in body:
+        return "onrevokedmessage"
+    # ACK/status update
+    if "ack" in body and "id" in body and "body" not in body:
+        return "onack"
+    return "unknown"
 
 
-async def _handle_webhook_body(
+async def _handle_openwa_webhook(
     body: dict,
-    event: str,
     instance_name: str,
     background_tasks: BackgroundTasks,
     db: Session,
 ):
-    if event == "messages.upsert":
-        new_ids, auto_messages = webhook_service.process_message_upsert(db, instance_name, body.get("data"))
-        await broadcast({"type": "new_message", "instance": instance_name})
+    """Processa webhook do open-wa Easy API."""
+    event = _detect_event(body)
+
+    # QR code event — open-wa envia "qr"/"qrUrl", WPPConnect Server envia "qrcode"/"QRCODE_UPDATED"
+    if event in ("qr", "qrUrl", "qrcode", "QRCODE_UPDATED", "onqrcode"):
+        raw = (
+            body.get("data") or body.get("qr") or body.get("response")
+            or body.get("qrUrl") or body.get("qrcode") or ""
+        )
+        # WPPConnect envia data como dict: {"data": {"base64Image": "...", "urlCode": "..."}}
+        if isinstance(raw, dict):
+            raw = raw.get("base64Image") or raw.get("base64") or raw.get("urlCode") or raw.get("qrcode") or ""
+        qr_data = str(raw) if raw else ""
+        if qr_data and len(qr_data) > 50:
+            store_qrcode(instance_name, qr_data)
+            # WEBHOOK_GLOBAL_URL costuma ser /webhook/default; a sessao real pode vir no body.
+            # Gravar tambem sob session/instance evita 503 quando instance_name no banco != path.
+            extra_keys = []
+            for k in ("session", "instance", "instanceName", "sessionName"):
+                v = body.get(k)
+                if v and str(v) != instance_name:
+                    extra_keys.append(str(v))
+            data_obj = body.get("data")
+            if isinstance(data_obj, dict):
+                for k in ("session", "instance", "instanceName"):
+                    v = data_obj.get(k)
+                    if v and str(v) not in extra_keys and str(v) != instance_name:
+                        extra_keys.append(str(v))
+            for key in extra_keys:
+                store_qrcode(key, qr_data)
+            await broadcast({"type": "qr_code", "instance": instance_name})
+        return {"status": "ok", "event": event}
+
+    # open-wa startup/status events
+    if event in ("STARTUP", "MD_DETECT", "qrUrl", "CONNECTED"):
+        logger.info("open-wa event=%s instance=%s", event, instance_name)
+        if event == "CONNECTED":
+            await broadcast({"type": "connected", "instance": instance_name})
+        return {"status": "ok", "event": event}
+
+    # open-wa sends message data directly in the body
+    msg_data = body
+
+    if event in ("onmessage", "onselfmessage"):
+        instance_obj = db.query(Instance).filter(Instance.instance_name == instance_name).first()
+        if instance_obj:
+            from app.modules.events.webhook_adapter import publish_webhook_as_raw
+            await publish_webhook_as_raw(body, instance_name, str(instance_obj.id), event)
+        new_ids, auto_messages, affected_ids = webhook_service.process_message_upsert(db, instance_name, msg_data)
+        await broadcast({"type": "new_message", "instance": instance_name, "conversation_ids": affected_ids})
         for cid in new_ids:
             background_tasks.add_task(route_conversation, cid)
         for api_url, api_key, inst_name, phone, text in auto_messages:
             background_tasks.add_task(webhook_service.send_auto_message_task, api_url, api_key, inst_name, phone, text)
 
         # Check inbound messages for Databricks keyword trigger
-        instance_obj = db.query(Instance).filter(Instance.instance_name == instance_name).first()
-        if instance_obj:
-            messages_data = body.get("data") or []
-            if not isinstance(messages_data, list):
-                messages_data = [messages_data]
-            for msg_data in messages_data:
-                key = msg_data.get("key", {})
-                if key.get("fromMe"):
-                    continue
-                remote_jid = key.get("remoteJid", "")
-                if "@g.us" in remote_jid:
-                    continue
-                message_content = msg_data.get("message") or {}
-                text = (
-                    message_content.get("conversation")
-                    or (message_content.get("extendedTextMessage") or {}).get("text")
-                )
-                if text:
-                    phone = remote_jid.split("@")[0].split(":")[0]
-                    databricks_service.check_and_trigger(db, instance_obj.id, phone, text)
-    elif event == "messages.update":
-        webhook_service.process_message_update(db, instance_name, body.get("data"))
-        await broadcast({"type": "message_updated", "instance": instance_name})
-    elif event in ("groups.upsert", "groups.update", "group.update", "group.participants.update"):
-        webhook_service.process_groups_upsert(db, instance_name, body.get("data"))
-        await broadcast({"type": "groups_updated", "instance": instance_name})
-    elif event == "call":
+        if instance_obj and not body.get("fromMe") and not body.get("isGroupMsg"):
+            text = body.get("body") or ""
+            chat_id = body.get("chatId") or body.get("from") or ""
+            phone = str(chat_id).split("@")[0].split(":")[0]
+            if text and phone:
+                databricks_service.check_and_trigger(db, instance_obj.id, phone, text)
+
+    elif event == "onrevokedmessage":
+        affected_ids = webhook_service.process_message_revoked(db, instance_name, body) or []
+        await broadcast({"type": "message_updated", "instance": instance_name, "conversation_ids": affected_ids})
+
+    elif event == "incomingcall":
         webhook_service.process_call_event(db, instance_name, body)
         await broadcast({"type": "new_call", "instance": instance_name})
-    # presence.update, chats.update, contacts.update, connection.update, logout.instance, remove.instance - acknowledged
+
+    elif event == "onack":
+        webhook_service.process_message_ack(db, instance_name, body)
 
     return {"status": "ok", "event": event}
 
@@ -107,43 +136,13 @@ async def receive_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    instance_name = (
-        body.get("instance") or body.get("instanceName") or (path.split("/")[0] if path else "")
-    )
+    # Instance name from URL path (ex: /webhook/default)
+    instance_name = path.split("/")[0] if path else ""
+
+    # Also check body for instance/session fields (compat)
+    if not instance_name:
+        instance_name = body.get("instance") or body.get("session") or body.get("instanceName") or ""
     if not instance_name:
         raise HTTPException(status_code=400, detail="Instance name required")
 
-    event = body.get("event", "")
-    if not event:
-        first_seg = path.split("/")[0] if path else ""
-        event = EVENT_PATH_TO_EVENT.get(first_seg, _kebab_to_dot(first_seg)) if first_seg else ""
-    if not event and "/" in path:
-        event = _kebab_to_dot(path.split("/", 1)[1])
-
-    return await _handle_webhook_body(body, event, instance_name, background_tasks, db)
-
-
-root_router = APIRouter(tags=["webhook-events"])
-
-
-def _make_event_handler(event_path: str):
-    async def handler(
-        request: Request,
-        background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
-    ):
-        try:
-            body = await request.json()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        instance_name = body.get("instance") or body.get("instanceName") or ""
-        if not instance_name:
-            raise HTTPException(status_code=400, detail="Instance name required")
-        event = EVENT_PATH_TO_EVENT.get(event_path, _kebab_to_dot(event_path))
-        return await _handle_webhook_body(body, event, instance_name, background_tasks, db)
-
-    return handler
-
-
-for ep in EVENT_PATH_TO_EVENT:
-    root_router.add_api_route(f"/{ep}", _make_event_handler(ep), methods=["POST"])
+    return await _handle_openwa_webhook(body, instance_name, background_tasks, db)

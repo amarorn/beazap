@@ -18,16 +18,25 @@ export function useSseEvents() {
 
     es.onmessage = (e) => {
       try {
-        const event = JSON.parse(e.data) as { type: string }
+        const event = JSON.parse(e.data) as { type: string; conversation_ids?: number[] }
         if (event.type === 'heartbeat') return
 
         if (event.type === 'new_message' || event.type === 'message_updated') {
+          const ids = event.conversation_ids ?? []
+          ids.forEach((id) => {
+            queryClient.invalidateQueries({ queryKey: ['messages', id] })
+            queryClient.invalidateQueries({ queryKey: ['conversation', id] })
+          })
+          if (ids.length === 0) {
+            queryClient.invalidateQueries({ queryKey: ['messages'] })
+          }
           queryClient.invalidateQueries({ queryKey: ['overview-comparison'] })
           queryClient.invalidateQueries({ queryKey: ['conversations'] })
           queryClient.invalidateQueries({ queryKey: ['conversations-recent'] })
           queryClient.invalidateQueries({ queryKey: ['sla-alerts'] })
           queryClient.invalidateQueries({ queryKey: ['extended-metrics'] })
           queryClient.invalidateQueries({ queryKey: ['attendants-metrics'] })
+          queryClient.refetchQueries({ queryKey: ['messages'], type: 'active' })
         }
 
         if (event.type === 'groups_updated') {

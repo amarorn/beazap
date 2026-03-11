@@ -6,20 +6,18 @@ from functools import lru_cache
 class Settings(BaseSettings):
     APP_NAME: str = "BeaZap"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    DEBUG: bool = True
 
     DATABASE_URL: str = "postgresql://beazap:beazap@localhost:5432/beazap"
 
     SECRET_KEY: str = "change-this-in-production"
 
-    EVOLUTION_API_URL: str = ""
-    EVOLUTION_API_KEY: str = ""
-    # Opcional: URI do Postgres da Evolution (ex: postgresql://evolution:evolution123@localhost:5434/evolution)
-    # para registro automático de contatos LID no cache e retry de envio
-    EVOLUTION_DATABASE_URI: str = ""
+    # open-wa Easy API (configuracao global, pode ser sobrescrita por instancia)
+    OPENWA_API_URL: str = "http://localhost:8002"
+    OPENWA_API_KEY: str = ""
 
     ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = "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"
+    OPENAI_API_KEY: str = ""
     LLM_PROVIDER: str = "openai"  # "anthropic" ou "openai"
 
     WEBHOOK_SECRET: str = ""
@@ -31,6 +29,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
+
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    WPPCONNECT_API_URL: str = "http://localhost:21465"
+    WPPCONNECT_API_KEY: str = ""
+    WPPCONNECT_SECRET: str = "THISISMYSECURETOKEN"
+    DEFAULT_TENANT_ID: str = "1"
 
     class Config:
         env_file = ".env"

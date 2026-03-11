@@ -31,81 +31,48 @@ services:
     networks:
       - beazap-net
 
-  evolution:
-    image: atendai/evolution-api:v2.2.3
-    platform: linux/amd64
-    container_name: beazap-evolution
+  redpanda:
+    image: redpandadata/redpanda:v24.2.2
+    container_name: beazap-redpanda
+    command: redpanda start
     ports:
-      - "8080:8080"
+      - "9092:9092"
+    networks:
+      - beazap-net
+
+  wppconnect:
+    image: wppconnect/server-cli:latest
+    platform: linux/amd64
+    container_name: beazap-wppconnect
+    ports:
+      - "21465:21465"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     environment:
-      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://104.237.9.71:8080}
-      AUTHENTICATION_API_KEY: beazap-secret-2026
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
-
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@host.docker.internal:5434/evolution
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
-      DATABASE_SAVE_DATA_LABELS: "true"
-      DATABASE_SAVE_DATA_HISTORIC: "true"
-      DATABASE_SAVE_DATA_IS_ON_WHATSAPP: "true"
-
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://host.docker.internal:6381/1
-      CACHE_REDIS_PREFIX_KEY: evolution
-      CACHE_REDIS_SAVE_INSTANCES: "false"
-      CACHE_LOCAL_ENABLED: "false"
-
-      DEL_INSTANCE: "false"
-      QRCODE_LIMIT: 30
-      QRCODE_COLOR: "#198754"
-      CONFIG_SESSION_PHONE_VERSION: "2.3000.1033846690"
-      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
-      CONFIG_SESSION_PHONE_NAME: "Chrome"
-
-      LOG_LEVEL: ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
-      LOG_COLOR: "true"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+      SECRET_KEY: "${WPPCONNECT_SECRET:-THISISMYSECURETOKEN}"
+      # Ultimo segmento da URL deve ser igual ao Instance.instance_name (ex.: teste -> /webhook/teste).
+      WEBHOOK_GLOBAL_URL: "${WPPCONNECT_WEBHOOK_URL:-http://host.docker.internal:8000/webhook/default}"
+      WEBHOOK_GLOBAL_ENABLED: "true"
     volumes:
-      - evolution_instances:/evolution/instances
+      - wppconnect_data:/sessions
     networks:
       - beazap-net
     restart: unless-stopped
-    # DESCOMENTAR se DNS ainda falhar (usa rede do host diretamente):
-    # network_mode: host
 
-  evolution-manager:
-    image: evoapicloud/evolution-manager:v2.3.5
-    container_name: beazap-evolution-manager
-    ports:
-      - "8081:80"
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        for f in /etc/nginx/conf.d/*.conf; do [ -f "$$f" ] && sed -i 's/ must-revalidate//g' "$$f"; done
-        exec nginx -g "daemon off;"
+  init-kafka:
+    image: redpandadata/redpanda:v24.2.2
+    container_name: beazap-init-kafka
+    command: rpk topic create wa.raw-events wa.normalized-events message.outbound.requested message.outbound.sent message.outbound.failed -X brokers=redpanda:9092
+    depends_on:
+      - redpanda
     networks:
       - beazap-net
-    restart: unless-stopped
+    restart: "no"
 
 volumes:
   postgres_data:
   redis_data:
-  evolution_instances:
+  wppconnect_data:
 
 networks:
   beazap-net:
