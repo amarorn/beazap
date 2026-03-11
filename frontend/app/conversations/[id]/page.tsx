@@ -72,17 +72,32 @@ export default function ConversationDetailPage() {
   const [translatingOutgoing, setTranslatingOutgoing] = useState(false)
   const lastTranslatedMsgIdRef = useRef<number | null>(null)
 
-  const { data: conversation, isLoading: loadingConv } = useQuery({
+  const {
+    data: conversation,
+    isLoading: loadingConv,
+    isError: convError,
+    error: convErr,
+    isSuccess: convOk,
+  } = useQuery({
     queryKey: ['conversation', id],
     queryFn: () => metricsApi.getConversation(id),
     enabled: !!id,
+    retry: false,
   })
+
+  useEffect(() => {
+    if (!convError || !convErr) return
+    const status = (convErr as { response?: { status?: number } })?.response?.status
+    if (status === 404) router.replace('/conversations')
+  }, [convError, convErr, router])
 
   const { data: messages = [], isLoading: loadingMsgs } = useQuery({
     queryKey: ['messages', id],
     queryFn: () => metricsApi.getMessages(id),
-    enabled: !!id,
-    refetchInterval: conversation?.status === 'open' ? 5000 : false,
+    enabled: !!id && convOk,
+    retry: false,
+    refetchInterval:
+      convOk && conversation?.status === 'open' ? 5000 : false,
   })
 
   const { data: quickReplies = [] } = useQuery({
@@ -99,7 +114,8 @@ export default function ConversationDetailPage() {
   const { data: contextSummaries = [] } = useQuery({
     queryKey: ['context-summaries', id],
     queryFn: () => metricsApi.getContextSummaries(id),
-    enabled: !!id,
+    enabled: !!id && convOk,
+    retry: false,
   })
 
   const { data: contactStatus } = useQuery({

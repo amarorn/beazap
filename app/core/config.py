@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    DATABASE_URL: str = "postgresql://beazap:beazap@localhost:5432/beazap"
+    DATABASE_URL: str = "postgresql://beazap:beazap@localhost:5434/beazap"
 
     SECRET_KEY: str = "change-this-in-production"
 

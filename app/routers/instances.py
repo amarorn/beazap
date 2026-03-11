@@ -28,18 +28,20 @@ def list_instances(db: Session = Depends(get_db)):
 
 @router.post("/instances")
 async def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)):
+    settings = get_settings()
+    default_url = getattr(settings, "WPPCONNECT_API_URL", None) or "http://localhost:21465"
+    effective_api_url = (payload.api_url or "").strip() or default_url
+
     existing = db.query(Instance).filter(Instance.instance_name == payload.instance_name).first()
     if existing:
         if existing.active:
             raise HTTPException(status_code=400, detail="Ja existe uma instancia ativa com esse 'Instance name'. Use outro nome ou remova a instancia atual.")
         existing.name = payload.name
-        existing.api_url = payload.api_url
+        existing.api_url = effective_api_url
         api_key = payload.api_key or ""
         if not api_key.strip():
-            settings = get_settings()
             secret = getattr(settings, "WPPCONNECT_SECRET", "THISISMYSECURETOKEN")
-            base_url = payload.api_url or getattr(settings, "WPPCONNECT_API_URL", "http://localhost:21465")
-            token = generate_token(base_url, secret, payload.instance_name)
+            token = generate_token(effective_api_url, secret, payload.instance_name)
             if token:
                 api_key = token
         existing.api_key = api_key or existing.api_key
@@ -51,13 +53,12 @@ async def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)
     else:
         api_key = payload.api_key or ""
         if not api_key.strip():
-            settings = get_settings()
             secret = getattr(settings, "WPPCONNECT_SECRET", "THISISMYSECURETOKEN")
-            base_url = payload.api_url or getattr(settings, "WPPCONNECT_API_URL", "http://localhost:21465")
-            token = generate_token(base_url, secret, payload.instance_name)
+            token = generate_token(effective_api_url, secret, payload.instance_name)
             if token:
                 api_key = token
         db_data = payload.model_dump(exclude={"owner_email"})
+        db_data["api_url"] = effective_api_url
         db_data["api_key"] = api_key or payload.api_key or ""
         instance = Instance(**db_data, owner_email=payload.owner_email)
         db.add(instance)
@@ -68,7 +69,7 @@ async def create_instance(payload: InstanceCreate, db: Session = Depends(get_db)
     qrcode_img = None
     api_error = None
     try:
-        qrcode_img = await get_qrcode(payload.api_url, instance.api_key, payload.instance_name)
+        qrcode_img = await get_qrcode(instance.api_url, instance.api_key, payload.instance_name)
     except Exception as e:
         api_error = str(e)
 
@@ -99,27 +100,33 @@ async def get_instance_qrcode(instance_id: int, db: Session = Depends(get_db)):
     if not instance:
         raise HTTPException(status_code=404, detail="Instancia nao encontrada")
     qrcode_img = await get_qrcode(instance.api_url, instance.api_key, instance.instance_name)
-    if not qrcode_img:
-        logger.warning(
-            "get_instance_qrcode 503 instance_id=%s instance_name=%s api_url=%s",
-            instance_id, instance.instance_name, instance.api_url,
-        )
-        api_base = (instance.api_url or "").rstrip("/") or "http://localhost:21465"
-        sess = instance.instance_name
-        hint_webhook = (
-            f" Para sessao '{sess}' defina no .env WPPCONNECT_WEBHOOK_URL=http://host.docker.internal:8000/webhook/{sess} "
-            "e recrie o container: docker compose up -d wppconnect --force-recreate."
-        )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"QR indisponivel (WPPConnect {api_base}, sessao {sess}). "
-                "Container: docker compose up -d wppconnect. "
-                "Se ainda inicializando, aguarde 1-2 min e tente de novo."
-                + (hint_webhook if sess != "default" else "")
-            ),
-        )
-    return {"qrcode": qrcode_img}
+    if qrcode_img:
+        return {"qrcode": qrcode_img}
+    conn = await get_connection_state(
+        instance.api_url or "", instance.api_key or "", instance.instance_name
+    )
+    if conn.get("state") == "open":
+        return {"qrcode": None, "connected": True}
+    logger.warning(
+        "get_instance_qrcode 503 instance_id=%s instance_name=%s api_url=%s",
+        instance_id, instance.instance_name, instance.api_url,
+    )
+    api_base = (instance.api_url or "").rstrip("/") or get_settings().WPPCONNECT_API_URL
+    sess = instance.instance_name
+    hint_webhook = (
+        f" Para sessao '{sess}' defina webhook.url no wppconnect-server config apontando para "
+        f"http://localhost:8000/webhook/{sess} e reinicie o server antes de gerar o QR."
+    )
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"QR indisponivel (WPPConnect {api_base}, sessao {sess}). "
+            "Se ja conectou no celular, nao ha QR ate fazer logout na sessao. "
+            "Se ainda nao conectou: suba o BeaZap antes do WPPConnect, confira webhook e api_key, "
+            "e tente de novo em ate 90s."
+            + (hint_webhook if sess != "default" else "")
+        ),
+    )
 
 
 @router.post("/instances/{instance_id}/send-qrcode-email")
@@ -156,7 +163,9 @@ async def check_instance_status(instance_id: int, db: Session = Depends(get_db))
     if not instance.api_url or not instance.api_key:
         return {"state": "unknown", "error": "Instancia sem URL ou API Key configurada"}
 
-    result = await get_connection_state(instance.api_url, instance.api_key)
+    result = await get_connection_state(
+        instance.api_url, instance.api_key, instance.instance_name
+    )
     result["instance_name"] = instance.instance_name
     result["api_url"] = instance.api_url
     return result

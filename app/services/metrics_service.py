@@ -643,8 +643,12 @@ def set_conversation_send_jid(db: Session, conversation_id: int, send_jid: str) 
 
 def get_conversation_contact_status(db: Session, conversation_id: int) -> dict:
     """Retorna se o cliente desta conversa já está cadastrado na base de contatos."""
+    from fastapi import HTTPException
+
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-    if not conv or conv.is_group:
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    if conv.is_group:
         return {"saved": False}
     contact_phone = (conv.contact_phone or "").strip()
     contact_jid = (conv.contact_jid or "").strip()

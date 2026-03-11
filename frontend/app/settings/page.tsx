@@ -55,13 +55,19 @@ function QrCodeModal({
     setRefreshing(true)
     try {
       const result = await instancesApi.getQrCode(instanceId)
+      if (result.connected) {
+        setConnected(true)
+        onConnected?.()
+        setTimeout(onClose, 2500)
+        return
+      }
       if (result.qrcode) {
         setQrcode(toQrDataUrl(result.qrcode))
         setImgError(false)
         setCountdown(QR_REFRESH_INTERVAL / 1000)
       }
     } catch {
-      // QR indisponível — pode já estar conectado
+      // QR indisponivel — 503 ou ja conectado
     } finally {
       setRefreshing(false)
     }
@@ -237,6 +243,11 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
     try {
       try {
         const result = await instancesApi.getQrCode(inst.id)
+        if (result.connected) {
+          setQrError('Sessao ja conectada no WhatsApp. Nao e necessario QR. Use Verificar status.')
+          await checkStatus()
+          return
+        }
         if (result.qrcode) {
           setQrModal({ qrcode: toQrDataUrl(result.qrcode) })
           return
@@ -246,9 +257,14 @@ function InstanceCard({ inst, onDelete, onUpdate }: { inst: Instance; onDelete: 
         const detail = formatApiDetail(ax.response?.data?.detail)
         if (detail) lastMsg = detail
         if (ax.response?.status === 503) {
-          setQrError('Primeira tentativa retornou 503. O backend já espera até ~90s no WPPConnect. Nova tentativa em 25s…')
+          setQrError('Primeira tentativa retornou 503. O backend ja espera ate ~90s no WPPConnect. Nova tentativa em 25s…')
           await new Promise(r => setTimeout(r, waitAfter503Ms))
           const result2 = await instancesApi.getQrCode(inst.id)
+          if (result2.connected) {
+            setQrError('Sessao ja conectada. Atualize o status na lista.')
+            await checkStatus()
+            return
+          }
           if (result2.qrcode) {
             setQrModal({ qrcode: toQrDataUrl(result2.qrcode) })
             return

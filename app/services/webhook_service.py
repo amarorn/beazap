@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 from sqlalchemy.orm import Session
@@ -15,13 +16,13 @@ from app.services.wppconnect_service import send_text_message
 
 
 def _normalize_webhook_data(data: Any) -> List[Dict[str, Any]]:
-    """Normaliza data do webhook open-wa: aceita lista, objeto ou wrapper data/message."""
+    """Normaliza data do webhook open-wa / WPPConnect: aceita lista, objeto ou wrapper."""
     if data is None:
         return []
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        if "chatId" in data or "from" in data:
+        if "chatId" in data or "from" in data or data.get("wid"):
             return [data]
         wrapped = data.get("data") or data.get("message") or data.get("payload")
         if isinstance(wrapped, dict) and ("chatId" in wrapped or "from" in wrapped):
@@ -147,22 +148,48 @@ def _get_or_create_conversation(
 
 
 def _extract_message_id(msg_data: Dict[str, Any]) -> Optional[str]:
-    """Extrai o ID unico da mensagem do payload open-wa."""
-    # open-wa: id pode ser string ou objeto {id, remote, fromMe, _serialized}
+    """Extrai o ID unico da mensagem (open-wa / WPPConnect WA-JS)."""
     msg_id = msg_data.get("id")
     if isinstance(msg_id, dict):
-        return msg_id.get("_serialized") or msg_id.get("id")
-    if isinstance(msg_id, str):
+        out = msg_id.get("_serialized") or msg_id.get("id")
+        if out:
+            return str(out)
+        remote = msg_id.get("remote")
+        mid = msg_id.get("id")
+        if remote is not None and mid is not None:
+            return f"{remote}_{mid}"
+        if mid is not None:
+            return str(mid)
+    if isinstance(msg_id, str) and msg_id:
         return msg_id
-    return msg_data.get("messageId")
+    if msg_id is not None and not isinstance(msg_id, dict):
+        return str(msg_id)
+    mid = msg_data.get("messageId")
+    if mid:
+        return str(mid)
+    from_jid = msg_data.get("from") or msg_data.get("wid") or ""
+    if isinstance(from_jid, dict):
+        from_jid = from_jid.get("_serialized") or ""
+    t = msg_data.get("timestamp") or msg_data.get("t") or ""
+    body = (msg_data.get("body") or msg_data.get("content") or "")[:200]
+    if from_jid or body:
+        raw = f"{from_jid}|{t}|{body}"
+        return f"wpp_{hashlib.sha256(raw.encode()).hexdigest()[:32]}"
+    return None
 
 
 def _extract_chat_id(msg_data: Dict[str, Any]) -> str:
-    """Extrai o chatId (remoteJid equivalente) do payload open-wa."""
-    chat_id = msg_data.get("chatId") or msg_data.get("from") or ""
+    """Extrai o chatId (remoteJid) do payload open-wa / WPPConnect."""
+    chat_id = (
+        msg_data.get("chatId")
+        or msg_data.get("from")
+        or msg_data.get("wid")
+        or msg_data.get("author")
+        or ""
+    )
     if isinstance(chat_id, dict):
-        return chat_id.get("_serialized", "")
-    return str(chat_id)
+        return chat_id.get("_serialized") or chat_id.get("user") or ""
+    return str(chat_id) if chat_id else ""
 
 
 def _extract_from_me(msg_data: Dict[str, Any]) -> bool:
@@ -220,12 +247,21 @@ def process_message_upsert(db: Session, instance_name: str, data: Any) -> Tuple[
             continue
 
         chat_id = _extract_chat_id(msg_data)
+        if not chat_id or chat_id == "None":
+            logger.warning(
+                "webhook: mensagem sem chatId/from ignorada instance=%s keys=%s",
+                instance_name,
+                list(msg_data.keys())[:25],
+            )
+            continue
         from_me = _extract_from_me(msg_data)
 
         is_group = msg_data.get("isGroupMsg", False) or "@g.us" in chat_id
 
         existing = db.query(Message).filter(Message.evolution_id == external_id).first()
         if existing:
+            if existing.conversation_id and existing.conversation_id not in affected_conv_ids:
+                affected_conv_ids.append(existing.conversation_id)
             continue
 
         push_name = msg_data.get("notifyName") or (msg_data.get("sender") or {}).get("pushname") if isinstance(msg_data.get("sender"), dict) else None

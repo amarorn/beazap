@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -49,6 +50,29 @@ async def _handle_openwa_webhook(
 ):
     """Processa webhook do open-wa Easy API."""
     event = _detect_event(body)
+    if not isinstance(event, str):
+        event = "unknown"
+    event_lower = event.lower()
+    if event in ("message", "Message", "messages", "onanymessage"):
+        event = "onmessage"
+        event_lower = "onmessage"
+
+    # WPPConnect: payload pode ter chave "event" que sobrescrevia o nome do hook (functions.ts corrigido).
+    # Ainda assim, tratar aqui evita 500 se cair em process_message_upsert com payload de presenca.
+    _noop_events = {
+        "onpresencechanged",
+        "onparticipantschanged",
+        "onreactionmessage",
+        "onpollresponse",
+        "onupdatelabel",
+        "status-find",
+        "phonecode",
+        "closesession",
+        "logoutsession",
+        "session-logged",
+    }
+    if event_lower in _noop_events:
+        return {"status": "ok", "event": event}
 
     # QR code event — open-wa envia "qr"/"qrUrl", WPPConnect Server envia "qrcode"/"QRCODE_UPDATED"
     if event in ("qr", "qrUrl", "qrcode", "QRCODE_UPDATED", "onqrcode"):
@@ -92,10 +116,15 @@ async def _handle_openwa_webhook(
 
     if event in ("onmessage", "onselfmessage"):
         instance_obj = db.query(Instance).filter(Instance.instance_name == instance_name).first()
-        if instance_obj:
-            from app.modules.events.webhook_adapter import publish_webhook_as_raw
-            await publish_webhook_as_raw(body, instance_name, str(instance_obj.id), event)
         new_ids, auto_messages, affected_ids = webhook_service.process_message_upsert(db, instance_name, msg_data)
+        if instance_obj:
+            async def _publish_raw_safe(b, name, iid, ev):
+                try:
+                    from app.modules.events.webhook_adapter import publish_webhook_as_raw
+                    await publish_webhook_as_raw(b, name, iid, ev)
+                except Exception as e:
+                    logger.warning("publish_webhook_as_raw (async): %s", e)
+            asyncio.create_task(_publish_raw_safe(body, instance_name, str(instance_obj.id), event))
         await broadcast({"type": "new_message", "instance": instance_name, "conversation_ids": affected_ids})
         for cid in new_ids:
             background_tasks.add_task(route_conversation, cid)
@@ -120,6 +149,38 @@ async def _handle_openwa_webhook(
 
     elif event == "onack":
         webhook_service.process_message_ack(db, instance_name, body)
+
+    elif event == "unknown":
+        if body.get("from") or body.get("chatId") or body.get("wid"):
+            logger.info(
+                "webhook: event unknown mas parece mensagem; tentando onmessage instance=%s",
+                instance_name,
+            )
+            instance_obj = db.query(Instance).filter(Instance.instance_name == instance_name).first()
+            new_ids, auto_messages, affected_ids = webhook_service.process_message_upsert(
+                db, instance_name, body
+            )
+            if instance_obj:
+                async def _publish_raw_unknown(b, name, iid):
+                    try:
+                        from app.modules.events.webhook_adapter import publish_webhook_as_raw
+                        await publish_webhook_as_raw(b, name, iid, "onmessage")
+                    except Exception as e:
+                        logger.warning("publish_webhook_as_raw unknown (async): %s", e)
+                asyncio.create_task(_publish_raw_unknown(body, instance_name, str(instance_obj.id)))
+            await broadcast(
+                {"type": "new_message", "instance": instance_name, "conversation_ids": affected_ids}
+            )
+            for cid in new_ids:
+                background_tasks.add_task(route_conversation, cid)
+            for item in auto_messages:
+                background_tasks.add_task(webhook_service.send_auto_message_task, *item)
+        else:
+            logger.warning(
+                "webhook: event unknown instance=%s keys=%s",
+                instance_name,
+                list(body.keys())[:30] if isinstance(body, dict) else type(body),
+            )
 
     return {"status": "ok", "event": event}
 

@@ -31,13 +31,7 @@ import type {
   SentimentAnomaliesResult,
   ChurnPredictionResult,
 } from '@/types'
-
-function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8000`
-  }
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-}
+import { getApiBaseUrl } from '@/lib/api-url'
 
 const api = axios.create()
 
@@ -251,7 +245,9 @@ export const instancesApi = {
     api.get<{ state: string; error?: string; api_url?: string; instance_name?: string }>(`/api/instances/${id}/status`).then(r => r.data),
   getQrCode: (id: number) =>
     api
-      .get<{ qrcode: string }>(`/api/instances/${id}/qrcode`, { timeout: 120000 })
+      .get<{ qrcode: string | null; connected?: boolean }>(`/api/instances/${id}/qrcode`, {
+        timeout: 120000,
+      })
       .then(r => r.data),
   // Webhook is configured via open-wa env var, no API endpoint needed
   sendQrCodeEmail: (id: number, email?: string) =>

@@ -33,17 +33,23 @@ class WppConnectProvider(ChannelProvider):
         return h
 
     async def connect(self, connection_id: str) -> ConnectResult:
-        url = f"{self.base_url}/api/{connection_id}/checkConnectionState"
+        url = f"{self.base_url}/api/{connection_id}/check-connection-session"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url, headers=self._headers())
             if resp.status_code == 200:
                 data = resp.json()
-                state = (data.get("state") or data.get("status") or "").upper()
-                if state in ("CONNECTED", "OPEN", "true"):
+                if data.get("status") is True:
                     return {"status": "connected", "qr_code": None, "error": None}
-                if state in ("CONNECTING", "LOADING"):
-                    return {"status": "connecting", "qr_code": None, "error": None}
+                if data.get("status") is False:
+                    pass
+                else:
+                    raw = data.get("state") or data.get("status")
+                    state = (raw if isinstance(raw, str) else str(raw or "")).upper()
+                    if state in ("CONNECTED", "OPEN", "TRUE"):
+                        return {"status": "connected", "qr_code": None, "error": None}
+                    if state in ("CONNECTING", "LOADING", "OPENING"):
+                        return {"status": "connecting", "qr_code": None, "error": None}
             # Inicia a sessão (sem bloqueio) e aguarda o QR ficar disponível
             async with httpx.AsyncClient(timeout=15) as client:
                 start_url = f"{self.base_url}/api/{connection_id}/start-session"

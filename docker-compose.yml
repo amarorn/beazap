@@ -40,21 +40,24 @@ services:
     networks:
       - beazap-net
 
+  # Imagem custom beazap (build em wppconnect-server/ ou pull do Docker Hub).
+  # Ex. push: usuario/wppconnect-server-beazap:latest -> WPPCONNECT_IMAGE=usuario/wppconnect-server-beazap:latest
   wppconnect:
-    image: wppconnect/server-cli:latest
-    platform: linux/amd64
+    image: ${WPPCONNECT_IMAGE:-wppconnect-server-beazap:latest}
     container_name: beazap-wppconnect
+    # Host:container — app dentro do container escuta em 21465 (EXPOSE no Dockerfile)
+    # Host 21466 evita colisao com npm run dev local na 21465
     ports:
-      - "21465:21465"
+      - "${WPPCONNECT_PORT:-21466}:21465"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       SECRET_KEY: "${WPPCONNECT_SECRET:-THISISMYSECURETOKEN}"
-      # Ultimo segmento da URL deve ser igual ao Instance.instance_name (ex.: teste -> /webhook/teste).
       WEBHOOK_GLOBAL_URL: "${WPPCONNECT_WEBHOOK_URL:-http://host.docker.internal:8000/webhook/default}"
       WEBHOOK_GLOBAL_ENABLED: "true"
     volumes:
-      - wppconnect_data:/sessions
+      - wppconnect_userdata:/usr/src/wpp-server/userDataDir
+      - wppconnect_tokens:/usr/src/wpp-server/tokens
     networks:
       - beazap-net
     restart: unless-stopped
@@ -72,7 +75,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  wppconnect_data:
+  wppconnect_userdata:
+  wppconnect_tokens:
 
 networks:
   beazap-net:

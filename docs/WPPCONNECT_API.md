@@ -119,7 +119,8 @@ curl -s "http://localhost:21465/api/SESSAO/qrcode-session" -H "Authorization: Be
 ## 5. Estado da conexão
 
 ```bash
-curl -s "http://localhost:21465/api/SESSAO/checkConnectionState" \
+# WPPConnect Server 2.x usa kebab-case:
+curl -s "http://localhost:21465/api/SESSAO/check-connection-session" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -180,7 +181,7 @@ echo "timeout sem QR"
 | Token               | `POST /api/{session}/{secret}/generate-token` |
 | Subir browser       | `POST /api/{session}/start-session`         |
 | QR                  | `GET /api/{session}/qrcode-session`         |
-| Conectado?          | `GET /api/{session}/checkConnectionState`   |
+| Conectado?          | `GET /api/{session}/check-connection-session` (2.x)   |
 | Enviar texto        | `POST /api/{session}/send-message`          |
 
 Implementação: `app/services/wppconnect_service.py`.

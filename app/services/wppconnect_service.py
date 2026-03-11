@@ -50,7 +50,12 @@ def generate_token(api_url: str, secret: str, session_name: str) -> Optional[str
                 return data.get("full") or data.get("token")
         return None
     except Exception as e:
-        logger.warning("generate_token failed session=%s: %s", session_name, e)
+        logger.warning(
+            "generate_token failed session=%s api_url=%s: %s",
+            session_name,
+            api_url.rstrip("/") if api_url else "",
+            e,
+        )
         return None
 
 
@@ -146,16 +151,38 @@ async def warm_all_instances_sessions() -> None:
     from app.core.config import get_settings
     from app.models.instance import Instance
 
-    secret = getattr(get_settings(), "WPPCONNECT_SECRET", "") or ""
+    settings = get_settings()
+    secret = getattr(settings, "WPPCONNECT_SECRET", "") or ""
+    default_api_url = (getattr(settings, "WPPCONNECT_API_URL", None) or "").rstrip("/")
     db = SessionLocal()
     try:
         instances = db.query(Instance).filter(Instance.active == True).all()
         for inst in instances:
             if not inst.api_url:
-                continue
+                if default_api_url:
+                    inst.api_url = default_api_url
+                    db.commit()
+                else:
+                    continue
+            base = inst.api_url.rstrip("/")
+            if default_api_url and default_api_url != base:
+                try:
+                    with httpx.Client(timeout=3) as client:
+                        client.get(f"{base}/", follow_redirects=True)
+                except (httpx.ConnectError, OSError):
+                    logger.info(
+                        "warm instances: api_url inacessivel instance=%s %s -> usando WPPCONNECT_API_URL %s",
+                        inst.instance_name,
+                        base,
+                        default_api_url,
+                    )
+                    inst.api_url = default_api_url
+                    db.commit()
+                    base = default_api_url
+
             api_key = (inst.api_key or "").strip()
             if not api_key and secret:
-                token = generate_token(inst.api_url.rstrip("/"), secret, inst.instance_name)
+                token = generate_token(base, secret, inst.instance_name)
                 if token:
                     inst.api_key = token
                     db.commit()
@@ -164,7 +191,7 @@ async def warm_all_instances_sessions() -> None:
                 continue
             ok = await ensure_session_started(inst.api_url, api_key, inst.instance_name)
             if not ok and secret:
-                token = generate_token(inst.api_url.rstrip("/"), secret, inst.instance_name)
+                token = generate_token(base, secret, inst.instance_name)
                 if token and token != inst.api_key:
                     inst.api_key = token
                     db.commit()
@@ -174,15 +201,27 @@ async def warm_all_instances_sessions() -> None:
 
 
 async def get_connection_state(api_url: str, api_key: str, session: str = "default") -> dict:
-    """Verifica estado da conexao via GET /api/{session}/checkConnectionState."""
-    url = f"{api_url.rstrip('/')}/api/{session}/checkConnectionState"
+    """Verifica estado da conexao via GET /api/{session}/check-connection-session (WPPConnect Server 2.x)."""
+    base = api_url.rstrip("/")
+    url = f"{base}/api/{session}/check-connection-session"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url, headers=_headers(api_key))
+            if resp.status_code == 404:
+                legacy_url = f"{base}/api/{session}/checkConnectionState"
+                resp = await client.get(legacy_url, headers=_headers(api_key))
         if resp.status_code == 200:
             data = resp.json()
-            state = (data.get("state") or data.get("status") or "").upper()
-            if state in ("CONNECTED", "OPEN", "true"):
+            if data.get("status") is True:
+                return {"state": "open"}
+            if data.get("status") is False:
+                return {
+                    "state": "close",
+                    "error": data.get("message") or "Sessao desconectada",
+                }
+            raw = data.get("state") or data.get("status")
+            state = (raw if isinstance(raw, str) else str(raw or "")).upper()
+            if state in ("CONNECTED", "OPEN", "TRUE"):
                 return {"state": "open"}
             if state in ("CONNECTING", "LOADING", "OPENING"):
                 return {"state": "connecting"}
